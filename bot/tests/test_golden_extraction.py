@@ -18,29 +18,26 @@ sys.path.insert(0, os.path.join(_ROOT, "bot"))
 load_dotenv()
 
 from common.config_manager import ConfigManager  # noqa: E402
+from common.db import connect, load_programs  # noqa: E402
 from agent import Agent, MASTER_COLUMN  # noqa: E402
 
-MASTER = os.path.join(_ROOT, "files", "master.xlsx")
 PDF_21658 = os.path.join(_ROOT, "bot", "tests", "test_files", "21658_original.pdf")
 RAW_21658 = os.path.join(os.path.dirname(__file__), "fixtures", "golden", "21658_raw.txt")
-CONFIG = os.path.join(_ROOT, "files", "config.json")
 
 
-def _agent() -> Agent:
-    """The Agent as the app builds it: provider/model/key from files/config.json (+ .env);
-    falls back to the OpenAI defaults when no local config exists."""
-    if os.path.isfile(CONFIG):
-        return Agent.from_config(ConfigManager(CONFIG), MASTER)
-    return Agent(ConfigManager.read_master_programs(MASTER))
+def _agent(test_db_url) -> Agent:
+    """The Agent as the app builds it (model/key from env), with programs from the test DB."""
+    with connect(test_db_url) as conn:
+        programs = load_programs(conn)
+    return Agent(
+        programs,
+        api_key=ConfigManager.get_api_key(),
+        model=ConfigManager.get_model_name(),
+        provider=ConfigManager.get_model_provider(),
+    )
 
 
-def _has_key() -> bool:
-    if os.path.isfile(CONFIG):
-        return bool(ConfigManager(CONFIG).get_api_key())
-    return bool(os.getenv("OPENAI_API_KEY"))
-
-
-_HAS_KEY = _has_key()
+_HAS_KEY = bool(ConfigManager.get_api_key())
 
 
 @pytest.mark.skipif(not os.path.isfile(RAW_21658), reason="21658 raw text not present")
@@ -57,9 +54,9 @@ def test_program_number_includes_programs_from_summary_and_breakdown():
 
 @pytest.mark.skipif(not (os.path.isfile(PDF_21658) and _HAS_KEY),
                     reason="21658 PDF or LLM API key (configured provider) not present")
-def test_agent_extract_21658():
+def test_agent_extract_21658(test_db_url):
     """The whole Agent — deterministic fields + the one coalition LLM call + master."""
-    result = _agent().extract(PDF_21658)
+    result = _agent(test_db_url).extract(PDF_21658)
 
     # deterministic fields
     assert result.fields.date == "01/07/2026"

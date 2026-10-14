@@ -6,7 +6,7 @@
 Extracts the single letter and writes its summary PDF to files/outputs/<slug>_summary.pdf,
 then prints the path. Handy for eyeballing one letter end-to-end without waiting on the
 whole Knesset feed. Renders even when the letter is not master-relevant, so you always
-see a file. Run from the repo root (config/master paths are relative to it).
+see a file. Run from the repo root (output paths are relative to it).
 """
 import argparse
 import os
@@ -17,20 +17,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent
 from common.config_manager import ConfigManager
-from main import CONFIG_PATH, MASTER_PATH, OUTPUT_DIR, email_reports, render_summary
+from common.db import load_programs
+from main import OUTPUT_DIR, email_reports, render_summary
 from utils_function import _slug
 
 
 def run(source: str):
     """Extract one letter and render its summary PDF; return (rendered, result)."""
-    config = ConfigManager(CONFIG_PATH)
-    config.load_master(MASTER_PATH)
-    master_programs = config.get_ids()
+    master_programs = load_programs()
     extractor = agent.Agent(
         master_programs,
-        api_key=config.get_api_key(),
-        model=config.get_model_name(),
-        provider=config.get_model_provider(),
+        api_key=ConfigManager.get_api_key(),
+        model=ConfigManager.get_model_name(),
+        provider=ConfigManager.get_model_provider(),
     )
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

@@ -4,7 +4,7 @@ Each test_files PDF whose request has a golden fixture (bot/tests/fixtures/golde
 <req>.json) becomes a parametrized case. The deterministic test runs offline (no
 network, no LLM) and checks the fields the Agent derives without the model; the
 full-extraction test runs the whole Agent (incl. the one coalition LLM call) and
-is skipped without an API key for the provider set in files/config.json.
+is skipped without an API key for the provider set in MODEL_PROVIDER.
 """
 import json
 import os
@@ -21,30 +21,27 @@ sys.path.insert(0, os.path.join(_ROOT, "bot"))
 load_dotenv()
 
 from common.config_manager import ConfigManager  # noqa: E402
+from common.db import connect, load_programs  # noqa: E402
 from agent import Agent, MASTER_COLUMN  # noqa: E402
 from budget_letter import BudgetLetter  # noqa: E402
 
-MASTER = os.path.join(_ROOT, "files", "master.xlsx")
 TEST_FILES = os.path.join(os.path.dirname(__file__), "test_files")
 GOLDEN = os.path.join(os.path.dirname(__file__), "fixtures", "golden")
-CONFIG = os.path.join(_ROOT, "files", "config.json")
 
 
-def _agent() -> Agent:
-    """The Agent as the app builds it: provider/model/key from files/config.json (+ .env);
-    falls back to the OpenAI defaults when no local config exists."""
-    if os.path.isfile(CONFIG):
-        return Agent.from_config(ConfigManager(CONFIG), MASTER)
-    return Agent(ConfigManager.read_master_programs(MASTER))
+def _agent(test_db_url) -> Agent:
+    """The Agent as the app builds it (model/key from env), with programs from the test DB."""
+    with connect(test_db_url) as conn:
+        programs = load_programs(conn)
+    return Agent(
+        programs,
+        api_key=ConfigManager.get_api_key(),
+        model=ConfigManager.get_model_name(),
+        provider=ConfigManager.get_model_provider(),
+    )
 
 
-def _has_key() -> bool:
-    if os.path.isfile(CONFIG):
-        return bool(ConfigManager(CONFIG).get_api_key())
-    return bool(os.getenv("OPENAI_API_KEY"))
-
-
-_HAS_KEY = _has_key()
+_HAS_KEY = bool(ConfigManager.get_api_key())
 
 
 def _cases():
@@ -70,12 +67,11 @@ IDS = [c[0] for c in CASES]
 
 @pytest.mark.skipif(not CASES, reason="no test_files PDF has a golden fixture")
 @pytest.mark.parametrize("req,pdf,golden", CASES, ids=IDS)
-def test_deterministic_fields_match_golden(req, pdf, golden):
+def test_deterministic_fields_match_golden(req, pdf, golden, test_db_url):
     """Fields the Agent derives WITHOUT the LLM — offline, no network."""
     letter = BudgetLetter(pdf)
     text = letter.doc.text
-    master = set(ConfigManager.read_master_programs(MASTER))
-    agent = Agent(master)
+    agent = _agent(test_db_url)
 
     assert Agent._date(text) == golden["text"]["date"]
     assert agent._request_number(text) == golden["text"]["request_number"]
@@ -91,9 +87,9 @@ def test_deterministic_fields_match_golden(req, pdf, golden):
 @pytest.mark.skipif(not (CASES and _HAS_KEY),
                     reason="test_files fixtures or LLM API key (configured provider) not present")
 @pytest.mark.parametrize("req,pdf,golden", CASES, ids=IDS)
-def test_full_extraction_matches_golden(req, pdf, golden):
+def test_full_extraction_matches_golden(req, pdf, golden, test_db_url):
     """The whole Agent, incl. the one coalition LLM call — needs an API key."""
-    result = _agent().extract(pdf)
+    result = _agent(test_db_url).extract(pdf)
 
     assert result.fields.date == golden["text"]["date"]
     assert result.fields.staffing_changes == golden["text"]["staffing_changes"]

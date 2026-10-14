@@ -7,12 +7,12 @@ The pipeline reads top-to-bottom in main():
   3. render    — write a summary PDF for each relevant letter
   4. email     — send the PDFs to the mailing list
 
-    uv run python bot/main.py                      # email the config.json mailing list
+    uv run python bot/main.py                      # email the mailing list
     uv run python bot/main.py --to me@example.com  # test run: email only this address
     uv run python bot/main.py --no-email           # render PDFs, send nothing
 
-Non-secret config (model, mailing list, schedule) comes from files/config.json; secrets
-(OpenAI key, Gmail OAuth) from .env; the master program-code set from files/master.xlsx.
+The mailing list and master program-code set come from Neon (DATABASE_URL); the model
+(MODEL_NAME, MODEL_PROVIDER) and secrets (OpenAI key, Gmail OAuth) from .env.
 """
 import argparse
 import logging
@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import agent
 from aggregator import get_pdf_urls
 from common.config_manager import ConfigManager
+from common.db import connect, list_emails, load_programs
 from notifier import Attachment, gmail_credentials, send_email
 from reports import Reports
 from utils_function import _slug
@@ -37,8 +38,6 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = "./files/config.json"
-MASTER_PATH = "./files/master.xlsx"
 OUTPUT_DIR = Path("./files/outputs/")
 
 # Used only when the live Knesset feed returns nothing (offline / testing).
@@ -83,7 +82,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the budget-letter pipeline.")
     parser.add_argument(
         "--to", action="append", metavar="EMAIL",
-        help="send the report to this address instead of the config.json mailing list "
+        help="send the report to this address instead of the mailing list "
              "(repeat for several addresses)")
     parser.add_argument(
         "--no-email", action="store_true",
@@ -92,7 +91,7 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 
 def resolve_recipients(override: list[str] | None, mailing_list: list[str] | None) -> list[str]:
-    """--to wins over the config mailing list; never None."""
+    """--to wins over the mailing list; never None."""
     return list(override or mailing_list or [])
 
 
@@ -118,15 +117,12 @@ def main(argv=None) -> None:
     if not args.no_email:
         # Fail fast: check the Gmail OAuth values before spending LLM calls on letters we can't send.
         gmail_credentials()
-    config = ConfigManager(CONFIG_PATH)
-    # Sync config's `programs` list from the master file, then use that dict.
-    config.load_master(MASTER_PATH)
-    master_programs = config.get_ids()  # {code: name}, now sourced from the master
+    master_programs = load_programs()  # {code: name}
     extractor = agent.Agent(
         master_programs,
-        api_key=config.get_api_key(),
-        model=config.get_model_name(),
-        provider=config.get_model_provider(),
+        api_key=ConfigManager.get_api_key(),
+        model=ConfigManager.get_model_name(),
+        provider=ConfigManager.get_model_provider(),
     )
 
     # 1. aggregate — candidate letter URLs (fall back to one URL when offline).
@@ -164,11 +160,12 @@ def main(argv=None) -> None:
     if args.no_email:
         logger.info("--no-email: %d PDF(s) rendered, nothing sent", len(path_names))
     else:
-        email_reports(
-            config.get_notifier_email(),
-            resolve_recipients(args.to, config.get_mailing_list()),
-            path_names,
-        )
+        if args.to:
+            recipients = resolve_recipients(args.to, None)
+        else:
+            with connect() as conn:
+                recipients = list_emails(conn)
+        email_reports(ConfigManager.get_notifier_email(), recipients, path_names)
 
 
 if __name__ == "__main__":
