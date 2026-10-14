@@ -72,7 +72,7 @@ def test_run_stops_before_any_work_when_gmail_is_not_configured(monkeypatch):
 def test_no_email_run_does_not_touch_gmail(monkeypatch):
     checked = []
     monkeypatch.setattr(main, "gmail_credentials", lambda: checked.append(1))
-    monkeypatch.setattr(main, "ConfigManager", lambda path: (_ for _ in ()).throw(RuntimeError("stop here")))
+    monkeypatch.setattr(main, "load_programs", lambda: (_ for _ in ()).throw(RuntimeError("stop here")))
     with pytest.raises(RuntimeError, match="stop here"):
         main.main(["--no-email"])
     assert checked == []

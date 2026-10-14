@@ -7,7 +7,7 @@ call over the narrative region does the two things that vary per letter: judging
 VERBATIM, no reflow). No deterministic fallback. `BudgetLetter` stays the document/table
 provider; this class is the whole agent.
 
-    agent = Agent(ConfigManager.read_master_programs("files/master.xlsx"), api_key=...)
+    agent = Agent(load_programs(), api_key=...)
     result = agent.extract(source)   # source = URL or local PDF path
     result.fields        # RequestFields
     result.table         # budget table + a `master` (כן/לא) column
@@ -25,6 +25,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from budget_letter import BudgetLetter
+from common.config_manager import ConfigManager
+from common.db import load_programs
 from request_fields import RequestFields
 
 # Load OPENAI_API_KEY from .env even when imported standalone.
@@ -100,17 +102,16 @@ class Agent:
         self.model = model or DEFAULT_MODELS.get(provider or "openai", DEFAULT_MODEL)
 
     @classmethod
-    def from_config(cls, config, master_path: str) -> "Agent":
-        """Build an Agent from a ConfigManager and the master.xlsx path.
+    def from_config(cls) -> "Agent":
+        """Build an Agent from the programs in Neon and the LLM env settings.
 
-        Pulls the master code set and the LLM settings from config, so callers don't
-        hand-plumb them. The plain constructor stays for tests (no config needed).
+        The plain constructor stays for tests (no DB or env needed).
         """
         return cls(
-            config.read_master_programs(master_path),
-            api_key=config.get_api_key(),
-            model=config.get_model_name(),
-            provider=config.get_model_provider(),
+            load_programs(),
+            api_key=ConfigManager.get_api_key(),
+            model=ConfigManager.get_model_name(),
+            provider=ConfigManager.get_model_provider(),
         )
 
     # ------------------------------------------------------------------ entry

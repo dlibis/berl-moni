@@ -1,6 +1,6 @@
 """Send one test email from the .env sender to the mailing list, via the Gmail API.
 
-    uv run python bot/send_test_mail.py                      # send to the config.json mailing list
+    uv run python bot/send_test_mail.py                      # send to the mailing list
     uv run python bot/send_test_mail.py --to me@example.com  # send only to this address
     uv run python bot/send_test_mail.py --check              # only verify the Gmail credentials
 
@@ -18,9 +18,8 @@ from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 
 from common.config_manager import ConfigManager
+from common.db import connect, list_emails
 from notifier import GmailNotConfigured, gmail_credentials, send_email
-
-CONFIG_PATH = "files/config.json"
 
 
 def check_credentials() -> bool:
@@ -54,9 +53,13 @@ def main() -> int:
     if args.check:
         return 0
 
-    recipients = args.to or ConfigManager(CONFIG_PATH).get_mailing_list() or []
+    if args.to:
+        recipients = args.to
+    else:
+        with connect() as conn:
+            recipients = list_emails(conn)
     if not recipients:
-        print("mailing list in files/config.json is empty and no --to given")
+        print("mailing list is empty and no --to given")
         return 1
     print(f"sending test email to: {', '.join(recipients)}")
     result = send_email(sender, recipients, "moni – test email",
