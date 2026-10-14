@@ -16,3 +16,12 @@ files/*
 .agents/
 skills-lock.json
 docs/superpowers/
+
+# Local-only data and planning docs (never committed; this repo is public)
+master.xlsx
+seed_programs.py
+docs/cloud-mailbox-plan.md
+docs/design.md
+_bmad-output/
+.neon
+node_modules/
