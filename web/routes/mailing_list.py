@@ -1,27 +1,59 @@
-from flask import Blueprint, current_app, jsonify, request
+import re
 
-from common.config_manager import ConfigManager
+from flask import Blueprint, jsonify, request
+from psycopg.errors import UniqueViolation
 
-
-def error_response(message: str, status_code: int = 400):
-    return jsonify({"error": message, "message": message}), status_code
+from common.db import add_email, connect, get_setting, list_emails, remove_email
+from common.limits import list_cap
+from web.auth import require_session
 
 mailing_list_bp = Blueprint("mailing_list", __name__, url_prefix="/api/v1/mailing_list")
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+LOCK_KEY = 73421
 
 
-@mailing_list_bp.route("", methods=["GET"])
+def _email(value):
+    value = value.strip().lower() if isinstance(value, str) else ""
+    return value if EMAIL_RE.fullmatch(value) else None
+
+
+def _cap(conn):
+    return list_cap(int(get_setting(conn, "resend_daily_limit", 100)) - int(get_setting(conn, "resend_reserve", 5)))
+
+
+@mailing_list_bp.get("")
+@require_session
 def get_mailing_list():
-    config: ConfigManager = current_app.config["config_manager"]
-    return jsonify(config.get_mailing_list() or [])
+    with connect() as conn:
+        emails = list_emails(conn)
+        cap = _cap(conn)
+    return jsonify({"emails": emails, "count": len(emails), "cap": cap})
 
 
-@mailing_list_bp.route("", methods=["POST"])
-def post_mailing_list():
-    config: ConfigManager = current_app.config["config_manager"]
-    data = request.get_json()
-    if not isinstance(data, list):
-        return error_response("רשימת התפוצה חייבת להיות רשימת כתובות אימייל.")
-    if any(not isinstance(email, str) or not email.strip() for email in data):
-        return error_response("כל פריט ברשימת התפוצה חייב להיות כתובת אימייל תקינה.")
-    config.set_mailing_list(data)
-    return jsonify({"status": "ok"}), 201
+@mailing_list_bp.post("")
+@require_session
+def add_mailing_list_email():
+    email = _email((request.get_json(silent=True) or {}).get("email"))
+    if email is None:
+        return jsonify({"error": "invalid email"}), 400
+    try:
+        with connect() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
+            count = conn.execute("SELECT count(*) AS count FROM mailing_list").fetchone()["count"]
+            if count >= _cap(conn):
+                return jsonify({"error": "mailing list is at capacity"}), 400
+            add_email(conn, email)
+    except UniqueViolation:
+        return jsonify({"error": "email exists"}), 400
+    return jsonify({"email": email}), 201
+
+
+@mailing_list_bp.delete("/<path:email>")
+@require_session
+def delete_mailing_list_email(email):
+    email = _email(email)
+    if email is None:
+        return jsonify({"error": "invalid email"}), 400
+    with connect() as conn:
+        changed = remove_email(conn, email)
+    return (jsonify({"status": "ok"}), 200) if changed else (jsonify({"error": "not found"}), 404)

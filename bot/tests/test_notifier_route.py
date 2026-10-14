@@ -1,60 +1,62 @@
-"""/api/v1/notifier — read-only: reports the .env sender and whether Gmail OAuth is set up."""
-import json
-import os
-import sys
-
 import pytest
+from flask import Flask
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, _ROOT)
+from web.csrf import register_csrf
+from web.routes.notifier import notifier_bp
 
-from flask import Flask  # noqa: E402
 
-from common.config_manager import ConfigManager  # noqa: E402
-from web.routes import register_routes  # noqa: E402
+class Response:
+    status_code = 200
+
+    def json(self):
+        return {"session": {"id": "test"}, "user": {"id": "test"}}
+
+
+class Connection:
+    def __init__(self):
+        self.settings = {"from_address": "", "reply_to_address": ""}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def execute(self, sql, params):
+        if sql.startswith("SELECT"):
+            self.row = {"value": self.settings.get(params[0], "")}
+        else:
+            self.settings[params[0]] = params[1].obj
+            self.row = None
+        return self
+
+    def fetchone(self):
+        return self.row
 
 
 @pytest.fixture
-def client(tmp_path):
-    cfg = tmp_path / "config.json"
-    cfg.write_text(json.dumps({
-        "model_name": "", "model_provider": None, "mailing_list": [],
-        "last_master_update": None, "last_master_filename": None,
-        "schedule": [], "programs": [],
-    }))
+def client(monkeypatch):
+    monkeypatch.setenv("NEON_AUTH_BASE_URL", "https://auth.example")
+    monkeypatch.setenv("SITE_ORIGIN", "https://berl.site")
+    monkeypatch.setattr("web.auth.requests.get", lambda *args, **kwargs: Response())
+    connection = Connection()
+    monkeypatch.setattr("web.routes.notifier.connect", lambda: connection)
     app = Flask(__name__)
-    app.config["config_manager"] = ConfigManager(str(cfg))
-    app.config["files_dir"] = tmp_path
-    register_routes(app)
-    return app.test_client()
+    register_csrf(app)
+    app.register_blueprint(notifier_bp)
+    return app.test_client(), connection
 
 
-def test_get_reports_env_sender(client, monkeypatch):
-    monkeypatch.setenv("MONI_SENDER", "env@example.com")
-    monkeypatch.setenv("GOOGLE_CLIENT_ID", "id")
-    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "secret")
-    monkeypatch.setenv("GOOGLE_REFRESH_TOKEN", "1//refresh")
-    r = client.get("/api/v1/notifier")
-    assert r.status_code == 200
-    assert r.get_json() == {"email": "env@example.com", "configured": True}
+def test_notifier_round_trip(client):
+    http, connection = client
+    response = http.post("/api/v1/notifier", json={"from_address": "NEWS@BERL.SITE", "reply_to_address": "Staff@Example.com"}, headers={"Origin": "https://berl.site"})
+    assert response.status_code == 200
+    assert connection.settings == {"from_address": "news@berl.site", "reply_to_address": "staff@example.com"}
+    assert http.get("/api/v1/notifier").get_json() == connection.settings
 
 
-def test_get_reports_unconfigured(client, monkeypatch):
-    monkeypatch.delenv("MONI_SENDER", raising=False)
-    for k in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"):
-        monkeypatch.delenv(k, raising=False)
-    r = client.get("/api/v1/notifier")
-    assert r.get_json() == {"email": "", "configured": False}
-
-
-def test_post_is_rejected(client):
-    r = client.post("/api/v1/notifier", json={"email": "x@example.com", "password": "p"})
-    assert r.status_code == 405
-
-
-def test_get_not_configured_without_refresh_token(client, monkeypatch):
-    monkeypatch.setenv("MONI_SENDER", "env@example.com")
-    monkeypatch.setenv("GOOGLE_CLIENT_ID", "id")
-    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "secret")
-    monkeypatch.delenv("GOOGLE_REFRESH_TOKEN", raising=False)
-    assert client.get("/api/v1/notifier").get_json()["configured"] is False
+@pytest.mark.parametrize("sender,reply", [("x@example.com", "a@example.com"), ("x@berl.site", "invalid"), ("UP PER@berl.site", "a@example.com")])
+def test_notifier_validation(client, sender, reply):
+    http, _ = client
+    response = http.post("/api/v1/notifier", json={"from_address": sender, "reply_to_address": reply}, headers={"Origin": "https://berl.site"})
+    assert response.status_code == 400
