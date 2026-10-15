@@ -1,8 +1,8 @@
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../../components/ui/alert-dialog";
-import { useRecover } from "./use-recover";
-import { useStatus } from "./use-status";
+import { useRecover } from "../../hooks/use-recover";
+import { useStatus } from "../../hooks/use-status";
 
 export function FailedSendRunCard() {
   const run = useStatus().data?.failed_send_run;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { onUnauthenticated } from "../lib/api";
-import { AppLayout } from "./layout";
+import { onUnauthenticated } from "../services/api";
+import { AppLayout } from "../layouts/app-layout";
 import { NotSignedIn } from "./not-signed-in";
 import { Home } from "../pages/home";
 import { Programs } from "../pages/programs";

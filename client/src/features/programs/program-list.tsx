@@ -5,7 +5,7 @@ import { Loading } from "../../components/loading";
 import { Pagination } from "../../components/pagination";
 import { ProgramActions } from "./program-actions";
 import { ProgramRow } from "./program-row";
-import { usePrograms } from "./use-programs";
+import { usePrograms } from "../../hooks/use-programs";
 
 export function ProgramList() {
   const [search, setSearch] = useState("");

@@ -3,7 +3,7 @@ import { Plus } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
 import { EmailForm } from "./email-form";
-import { useMailingList } from "./use-mailing-list";
+import { useMailingList } from "../../hooks/use-mailing-list";
 
 export function AddRecipientButton() {
   const [open, setOpen] = useState(false);

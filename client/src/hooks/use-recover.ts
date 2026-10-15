@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { write, ApiError } from "../../lib/api";
+import { write, ApiError } from "../services/api";
 
 export function useRecover() {
   const queryClient = useQueryClient();

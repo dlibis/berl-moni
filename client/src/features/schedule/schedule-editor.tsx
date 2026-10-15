@@ -2,13 +2,13 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { write } from "../../lib/api";
+import { write } from "../../services/api";
 import { Button } from "../../components/ui/button";
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
 import type { Day, Range } from "./types";
-import { useSchedule } from "./use-schedule";
-import { useScheduleDraft, useScheduleDraftApi } from "./schedule-draft";
+import { useSchedule } from "../../hooks/use-schedule";
+import { useScheduleDraft, useScheduleDraftApi } from "../../contexts/schedule-draft";
 
 const weekdays: [string, string][] = [
   ["sun", "א׳"],

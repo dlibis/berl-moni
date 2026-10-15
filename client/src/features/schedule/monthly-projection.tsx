@@ -1,4 +1,4 @@
-import { useSchedule } from "./use-schedule";
+import { useSchedule } from "../../hooks/use-schedule";
 
 export function MonthlyProjection() {
   const schedule = useSchedule();

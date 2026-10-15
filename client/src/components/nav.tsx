@@ -1,6 +1,6 @@
 import { CalendarDays, House, Inbox, List, Mail, Settings2 } from "lucide-react";
 import { NavLink } from "react-router-dom";
-import { cn } from "../lib/utils";
+import { cn } from "../utils/utils";
 
 const navigation = [
   ["/", "ראשי", House],

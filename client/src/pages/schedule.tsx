@@ -1,7 +1,7 @@
 import { PageHeader } from "../components/page-header";
 import { AddRangeButton } from "../features/schedule/add-range-button";
 import { MonthlyProjection } from "../features/schedule/monthly-projection";
-import { ScheduleDraftProvider } from "../features/schedule/schedule-draft";
+import { ScheduleDraftProvider } from "../contexts/schedule-draft";
 import { ScheduleEditor } from "../features/schedule/schedule-editor";
 
 export function Schedule() {

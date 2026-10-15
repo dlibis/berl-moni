@@ -1,8 +1,8 @@
 import { Menu } from "lucide-react";
 import { Outlet } from "react-router-dom";
-import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
-import { Button } from "./ui/button";
-import { Nav } from "./nav";
+import { Sheet, SheetContent, SheetTrigger } from "../components/ui/sheet";
+import { Button } from "../components/ui/button";
+import { Nav } from "../components/nav";
 
 export function AppLayout() {
   return (

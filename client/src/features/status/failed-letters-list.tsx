@@ -1,9 +1,9 @@
 import { RotateCcw } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../../components/ui/alert-dialog";
-import { dateTime } from "./date-time";
-import { useRecover } from "./use-recover";
-import { useStatus } from "./use-status";
+import { dateTime } from "../../utils/date-time";
+import { useRecover } from "../../hooks/use-recover";
+import { useStatus } from "../../hooks/use-status";
 
 export function FailedLettersList() {
   const letters = useStatus().data?.failed_letters ?? [];

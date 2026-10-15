@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { get } from "../../lib/api";
-import type { Program } from "./types";
+import { get } from "../services/api";
+import type { Program } from "../features/programs/types";
 
 export function usePrograms() {
   return useQuery({

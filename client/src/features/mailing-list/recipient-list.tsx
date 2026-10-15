@@ -4,7 +4,7 @@ import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
 import { Pagination } from "../../components/pagination";
 import { EmailActions } from "./email-actions";
-import { useMailingList } from "./use-mailing-list";
+import { useMailingList } from "../../hooks/use-mailing-list";
 
 export function RecipientList() {
   const [search, setSearch] = useState("");

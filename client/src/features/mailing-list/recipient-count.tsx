@@ -1,4 +1,4 @@
-import { useMailingList } from "./use-mailing-list";
+import { useMailingList } from "../../hooks/use-mailing-list";
 
 export function RecipientCount() {
   const mailing = useMailingList();

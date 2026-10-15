@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import type { Range } from "./types";
-import { useSchedule } from "./use-schedule";
+import type { Range } from "../features/schedule/types";
+import { useSchedule } from "../hooks/use-schedule";
 
 // The header's add button and the editor edit the same unsaved ranges, so the draft lives in a context
 // shared by those two blocks instead of in the page. Data and setter are split into two providers so a

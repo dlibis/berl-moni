@@ -1,12 +1,12 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { write } from "../../lib/api";
+import { write } from "../../services/api";
 import { Button } from "../../components/ui/button";
 import { Field } from "../../components/field";
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
-import { useMailbox, type MailboxData } from "./use-mailbox";
+import { useMailbox, type MailboxData } from "../../hooks/use-mailbox";
 
 const email = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 export function MailboxForm() {

@@ -1,7 +1,7 @@
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
-import { dateTime } from "./date-time";
-import { useStatus } from "./use-status";
+import { dateTime } from "../../utils/date-time";
+import { useStatus } from "../../hooks/use-status";
 
 export function LastScanCard() {
   const status = useStatus();

@@ -2,7 +2,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { write } from "../../lib/api";
+import { write } from "../../services/api";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
 import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../../components/ui/alert-dialog";

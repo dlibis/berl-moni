@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { get } from "../../lib/api";
+import { get } from "../services/api";
 
 export type MailboxData = { from_address: string; reply_to_address: string };
 

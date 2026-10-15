@@ -1,8 +1,8 @@
 import { Plus } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import type { Range } from "./types";
-import { useSchedule } from "./use-schedule";
-import { useScheduleDraftApi } from "./schedule-draft";
+import { useSchedule } from "../../hooks/use-schedule";
+import { useScheduleDraftApi } from "../../contexts/schedule-draft";
 
 const blank = (): Range => ({
   from: new Date().toISOString().slice(0, 10),
