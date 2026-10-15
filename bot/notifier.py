@@ -15,13 +15,13 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import List
 
-from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-# Load the project-root .env. Never overrides real env vars.
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+from common.env import load_env  # noqa: E402
+
+load_env()
 
 from common.config_manager import ConfigManager  # noqa: E402
 

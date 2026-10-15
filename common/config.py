@@ -1,9 +1,9 @@
 """Per-process environment validation (plan: Configuration). Never prints values."""
 import os
 
-from dotenv import load_dotenv
+from common.env import load_env
 
-load_dotenv()
+load_env()
 
 REQUIRED = {
     "web": ["DATABASE_URL", "NEON_AUTH_BASE_URL", "SITE_ORIGIN"],

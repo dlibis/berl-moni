@@ -21,16 +21,16 @@ import re
 from dataclasses import dataclass
 
 import pandas as pd
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from budget_letter import BudgetLetter
 from common.config_manager import ConfigManager
+from common.env import load_env
 from common.db import load_programs
 from request_fields import RequestFields
 
 # Load OPENAI_API_KEY from .env even when imported standalone.
-load_dotenv()
+load_env()
 
 logger = logging.getLogger(__name__)
 

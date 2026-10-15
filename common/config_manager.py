@@ -1,12 +1,14 @@
 import os
 from pathlib import Path
 
-from dotenv import find_dotenv, load_dotenv
+from dotenv import find_dotenv
 
-# One .env resolution for the whole app (bot, web, tests, gmail_auth): the nearest .env up
-# the tree, falling back to the project root when none exists yet. Never overrides real env vars.
+from common.env import load_env
+
+# Where gmail_auth writes GOOGLE_REFRESH_TOKEN: the nearest .env up the tree, else the project root.
+# Loading .env files happens in common.env.
 ENV_PATH = Path(find_dotenv() or Path(__file__).resolve().parent.parent / ".env")
-load_dotenv(ENV_PATH)
+load_env()
 
 
 class ConfigManager:

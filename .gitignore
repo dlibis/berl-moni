@@ -26,3 +26,7 @@ _bmad-output/
 .neon
 node_modules/
 public/
+
+# Per-environment secrets (.env.test etc.); the example stays tracked
+.env.*
+!.env.example

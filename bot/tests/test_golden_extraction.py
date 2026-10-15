@@ -9,13 +9,14 @@ import os
 import sys
 
 import pytest
-from dotenv import load_dotenv
 
 # Project root importable so `common` resolves (mirrors bot/main.py).
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _ROOT)
 sys.path.insert(0, os.path.join(_ROOT, "bot"))
-load_dotenv()
+from common.env import load_env  # noqa: E402
+
+load_env()
 
 from common.config_manager import ConfigManager  # noqa: E402
 from common.db import connect, load_programs  # noqa: E402
