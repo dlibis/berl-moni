@@ -25,3 +25,4 @@ docs/design.md
 _bmad-output/
 .neon
 node_modules/
+public/
