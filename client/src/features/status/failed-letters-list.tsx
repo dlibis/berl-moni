@@ -1,6 +1,10 @@
 import { RotateCcw } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../../components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  ConfirmDialog,
+} from "../../components/ui/alert-dialog";
 import { dateTime } from "../../utils/date-time";
 import { useRecover } from "../../hooks/use-recover";
 import { useStatus } from "../../hooks/use-status";
@@ -37,7 +41,9 @@ export function FailedLettersList() {
                 action="סריקה מחדש"
                 pending={recover.isPending}
                 onConfirm={() =>
-                  recover.mutate({ path: `/api/v1/letters/${encodeURIComponent(letter.slug)}/retry` })
+                  recover.mutate({
+                    path: `/api/v1/letters/${encodeURIComponent(letter.slug)}/retry`,
+                  })
                 }
               />
             </AlertDialog>

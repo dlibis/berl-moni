@@ -1,6 +1,10 @@
 import { AlertCircle } from "lucide-react";
 
-export function ErrorState({ text = "לא ניתן לטעון את הנתונים כעת" }: { text?: string }) {
+export function ErrorState({
+  text = "לא ניתן לטעון את הנתונים כעת",
+}: {
+  text?: string;
+}) {
   return (
     <div
       role="alert"

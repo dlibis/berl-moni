@@ -17,16 +17,26 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     credentials: "include",
     ...init,
     headers: {
-      ...(init.method && init.method !== "GET" ? { "Content-Type": "application/json" } : {}),
+      ...(init.method && init.method !== "GET"
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...init.headers,
     },
   });
   if (response.status === 401) unauthenticated?.();
   const data = (await response.json().catch(() => ({}))) as { error?: string };
-  if (!response.ok) throw new ApiError(response.status, data.error ?? "אירעה שגיאה");
+  if (!response.ok)
+    throw new ApiError(response.status, data.error ?? "אירעה שגיאה");
   return data as T;
 }
 
 export const get = <T>(path: string) => api<T>(path);
-export const write = <T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown) =>
-  api<T>(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+export const write = <T>(
+  path: string,
+  method: "POST" | "PUT" | "DELETE",
+  body?: unknown,
+) =>
+  api<T>(path, {
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });

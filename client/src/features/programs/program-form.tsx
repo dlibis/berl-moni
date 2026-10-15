@@ -7,7 +7,13 @@ import { Button } from "../../components/ui/button";
 import { Field } from "../../components/field";
 
 const validCode = (value: string) => /^\d{1,6}$/.test(value);
-export function ProgramForm({ initial, onDone }: { initial?: Program; onDone: () => void }) {
+export function ProgramForm({
+  initial,
+  onDone,
+}: {
+  initial?: Program;
+  onDone: () => void;
+}) {
   const queryClient = useQueryClient();
   const [code, setCode] = useState(initial?.code ?? "");
   const [name, setName] = useState(initial?.name ?? "");
@@ -15,7 +21,10 @@ export function ProgramForm({ initial, onDone }: { initial?: Program; onDone: ()
   const save = useMutation({
     mutationFn: () =>
       initial
-        ? write<Program>(`/api/v1/master/${initial.code}`, "PUT", { code, name })
+        ? write<Program>(`/api/v1/master/${initial.code}`, "PUT", {
+            code,
+            name,
+          })
         : write<Program>("/api/v1/master", "POST", { code, name }),
     onSuccess: () => {
       toast.success("התוכנית נשמרה");
@@ -40,9 +49,15 @@ export function ProgramForm({ initial, onDone }: { initial?: Program; onDone: ()
         maxLength={6}
         inputMode="numeric"
         onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-        error={!validCode(code) && code ? "קוד התוכנית מכיל ספרות בלבד" : undefined}
+        error={
+          !validCode(code) && code ? "קוד התוכנית מכיל ספרות בלבד" : undefined
+        }
       />
-      <Field label="שם התוכנית" value={name} onChange={(e) => setName(e.target.value)} />
+      <Field
+        label="שם התוכנית"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <Button type="submit" disabled={save.isPending}>
         {save.isPending ? "שומר…" : "שמירה"}

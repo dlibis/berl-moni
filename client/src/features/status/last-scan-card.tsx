@@ -37,7 +37,11 @@ export function LastScanCard() {
             <dt className="text-muted-foreground">הודעות שנשלחו</dt>
             <dd>{scan.emails_sent ?? 0}</dd>
           </div>
-          {scan.reason ? <div className="col-span-2 text-destructive">סיבה: {scan.reason}</div> : null}
+          {scan.reason ? (
+            <div className="col-span-2 text-destructive">
+              סיבה: {scan.reason}
+            </div>
+          ) : null}
         </dl>
       ) : (
         <p className="mt-4 text-muted-foreground">עדיין לא בוצעה סריקה</p>

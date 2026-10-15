@@ -12,7 +12,10 @@ export function ProgramList() {
   const [page, setPage] = useState(0);
   const programs = usePrograms();
   const filtered = useMemo(
-    () => (programs.data?.programs ?? []).filter((p) => `${p.code} ${p.name}`.includes(search.trim())),
+    () =>
+      (programs.data?.programs ?? []).filter((p) =>
+        `${p.code} ${p.name}`.includes(search.trim()),
+      ),
     [programs.data, search],
   );
   const rows = filtered.slice(page * 25, page * 25 + 25);
@@ -23,7 +26,10 @@ export function ProgramList() {
       <div className="max-w-xl">
         <label className="relative block">
           <span className="sr-only">חיפוש תוכנית</span>
-          <Search className="absolute right-3 top-3 text-muted-foreground" size={18} />
+          <Search
+            className="absolute right-3 top-3 text-muted-foreground"
+            size={18}
+          />
           <input
             value={search}
             onChange={(e) => {
@@ -36,7 +42,9 @@ export function ProgramList() {
         </label>
       </div>
       {filtered.length === 0 ? (
-        <div className="mt-6 rounded-lg border bg-card p-6 text-muted-foreground">אין תוכניות עדיין</div>
+        <div className="mt-6 rounded-lg border bg-card p-6 text-muted-foreground">
+          אין תוכניות עדיין
+        </div>
       ) : (
         <>
           <div className="mt-5 hidden overflow-hidden rounded-lg border md:block">

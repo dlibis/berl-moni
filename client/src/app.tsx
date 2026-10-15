@@ -9,7 +9,13 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <RoutesView />
-      <Toaster position="bottom-left" visibleToasts={2} duration={5000} closeButton richColors />
+      <Toaster
+        position="bottom-left"
+        visibleToasts={2}
+        duration={5000}
+        closeButton
+        richColors
+      />
     </QueryClientProvider>
   );
 }

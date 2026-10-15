@@ -12,13 +12,21 @@ export function Pagination({
   if (pages === 1) return null;
   return (
     <div className="mt-4 flex items-center gap-2 text-sm">
-      <Button variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>
+      <Button
+        variant="outline"
+        disabled={page === 0}
+        onClick={() => setPage(page - 1)}
+      >
         הקודם
       </Button>
       <span>
         עמוד {page + 1} מתוך {pages}
       </span>
-      <Button variant="outline" disabled={page + 1 === pages} onClick={() => setPage(page + 1)}>
+      <Button
+        variant="outline"
+        disabled={page + 1 === pages}
+        onClick={() => setPage(page + 1)}
+      >
         הבא
       </Button>
     </div>

@@ -8,7 +8,10 @@ import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
 import type { Day, Range } from "./types";
 import { useSchedule } from "../../hooks/use-schedule";
-import { useScheduleDraft, useScheduleDraftApi } from "../../contexts/schedule-draft";
+import {
+  useScheduleDraft,
+  useScheduleDraftApi,
+} from "../../contexts/schedule-draft";
 
 const weekdays: [string, string][] = [
   ["sun", "א׳"],
@@ -19,7 +22,10 @@ const weekdays: [string, string][] = [
   ["fri", "ו׳"],
   ["sat", "ש׳"],
 ];
-const hours = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
+const hours = Array.from(
+  { length: 24 },
+  (_, hour) => `${String(hour).padStart(2, "0")}:00`,
+);
 export function ScheduleEditor() {
   const queryClient = useQueryClient();
   const schedule = useSchedule();
@@ -27,23 +33,36 @@ export function ScheduleEditor() {
   const setRanges = useScheduleDraftApi();
   const [error, setError] = useState("");
   const save = useMutation({
-    mutationFn: () => write<{ schedule: Range[] }>("/api/v1/schedule", "POST", { schedule: ranges }),
+    mutationFn: () =>
+      write<{ schedule: Range[] }>("/api/v1/schedule", "POST", {
+        schedule: ranges,
+      }),
     onSuccess: () => {
       toast.success("לוח השליחה נשמר");
       setError("");
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
-    onError: () => setError("לא ניתן לשמור. יש לוודא שטווחי התאריכים אינם חופפים ושהתאריכים תקינים."),
+    onError: () =>
+      setError(
+        "לא ניתן לשמור. יש לוודא שטווחי התאריכים אינם חופפים ושהתאריכים תקינים.",
+      ),
   });
   function patchRange(index: number, change: Partial<Range>) {
-    setRanges((old) => old.map((range, current) => (current === index ? { ...range, ...change } : range)));
+    setRanges((old) =>
+      old.map((range, current) =>
+        current === index ? { ...range, ...change } : range,
+      ),
+    );
   }
   function patchDay(index: number, key: string, change: Partial<Day>) {
     setRanges((old) =>
       old.map((range, current) => {
         if (current !== index) return range;
         const existing = range.days[key] ?? { enabled: false, time: "08:00" };
-        return { ...range, days: { ...range.days, [key]: { ...existing, ...change } } };
+        return {
+          ...range,
+          days: { ...range.days, [key]: { ...existing, ...change } },
+        };
       }),
     );
   }
@@ -57,7 +76,10 @@ export function ScheduleEditor() {
         </div>
       ) : (
         ranges.map((range, index) => (
-          <section key={`${range.from}-${index}`} className="rounded-lg border bg-card p-5">
+          <section
+            key={`${range.from}-${index}`}
+            className="rounded-lg border bg-card p-5"
+          >
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">טווח {index + 1}</h2>
               <Button
@@ -65,7 +87,9 @@ export function ScheduleEditor() {
                 size="icon"
                 aria-label="מחיקת טווח"
                 title="מחיקת טווח"
-                onClick={() => setRanges((old) => old.filter((_, i) => i !== index))}
+                onClick={() =>
+                  setRanges((old) => old.filter((_, i) => i !== index))
+                }
               >
                 <Trash2 size={16} className="text-destructive" />
               </Button>
@@ -94,7 +118,10 @@ export function ScheduleEditor() {
               <legend className="text-sm font-medium">ימי שליחה</legend>
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {weekdays.map(([key, label]) => {
-                  const day = range.days[key] ?? { enabled: false, time: "08:00" };
+                  const day = range.days[key] ?? {
+                    enabled: false,
+                    time: "08:00",
+                  };
                   return (
                     <div
                       key={key}
@@ -104,16 +131,23 @@ export function ScheduleEditor() {
                         id={`${index}-${key}`}
                         type="checkbox"
                         checked={day.enabled}
-                        onChange={(e) => patchDay(index, key, { enabled: e.target.checked })}
+                        onChange={(e) =>
+                          patchDay(index, key, { enabled: e.target.checked })
+                        }
                         className="h-4 w-4 accent-primary"
                       />
-                      <label htmlFor={`${index}-${key}`} className="w-7 text-sm">
+                      <label
+                        htmlFor={`${index}-${key}`}
+                        className="w-7 text-sm"
+                      >
                         {label}
                       </label>
                       <select
                         disabled={!day.enabled}
                         value={day.time}
-                        onChange={(e) => patchDay(index, key, { time: e.target.value })}
+                        onChange={(e) =>
+                          patchDay(index, key, { time: e.target.value })
+                        }
                         className="ms-auto h-9 rounded border bg-background px-2 text-sm disabled:opacity-50"
                       >
                         {hours.map((time) => (

@@ -11,7 +11,10 @@ export function RecipientList() {
   const [page, setPage] = useState(0);
   const mailing = useMailingList();
   const filtered = useMemo(
-    () => (mailing.data?.emails ?? []).filter((email) => email.includes(search.trim().toLowerCase())),
+    () =>
+      (mailing.data?.emails ?? []).filter((email) =>
+        email.includes(search.trim().toLowerCase()),
+      ),
     [mailing.data, search],
   );
   const rows = filtered.slice(page * 25, page * 25 + 25);
@@ -22,7 +25,10 @@ export function RecipientList() {
       <div className="max-w-xl">
         <label className="relative block">
           <span className="sr-only">חיפוש נמען</span>
-          <Search className="absolute right-3 top-3 text-muted-foreground" size={18} />
+          <Search
+            className="absolute right-3 top-3 text-muted-foreground"
+            size={18}
+          />
           <input
             value={search}
             onChange={(e) => {
@@ -35,7 +41,9 @@ export function RecipientList() {
         </label>
       </div>
       {filtered.length === 0 ? (
-        <div className="mt-6 rounded-lg border bg-card p-6 text-muted-foreground">אין נמענים עדיין</div>
+        <div className="mt-6 rounded-lg border bg-card p-6 text-muted-foreground">
+          אין נמענים עדיין
+        </div>
       ) : (
         <>
           <div className="mt-5 hidden overflow-hidden rounded-lg border md:block">

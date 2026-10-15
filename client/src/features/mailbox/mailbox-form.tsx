@@ -23,7 +23,10 @@ export function MailboxForm() {
   }, [box.data]);
   const save = useMutation({
     mutationFn: () =>
-      write<MailboxData>("/api/v1/notifier", "POST", { from_address: from, reply_to_address: replyTo }),
+      write<MailboxData>("/api/v1/notifier", "POST", {
+        from_address: from,
+        reply_to_address: replyTo,
+      }),
     onSuccess: () => {
       toast.success("תיבת הדואר נשמרה");
       setError("");
@@ -35,14 +38,21 @@ export function MailboxForm() {
   if (box.isError) return <ErrorState />;
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!email(from) || !from.toLowerCase().endsWith("@berl.site") || !email(replyTo)) {
+    if (
+      !email(from) ||
+      !from.toLowerCase().endsWith("@berl.site") ||
+      !email(replyTo)
+    ) {
       setError("יש למלא כתובת שולח ב־@berl.site וכתובת מענה תקינה");
       return;
     }
     save.mutate();
   }
   return (
-    <form className="max-w-[560px] space-y-5 rounded-lg border bg-card p-5" onSubmit={submit}>
+    <form
+      className="max-w-[560px] space-y-5 rounded-lg border bg-card p-5"
+      onSubmit={submit}
+    >
       <Field
         label="כתובת שולח"
         type="email"
@@ -63,7 +73,9 @@ export function MailboxForm() {
         value={replyTo}
         onChange={(e) => setReplyTo(e.target.value)}
         helper="תשובות למכתבים יגיעו לתיבה זו."
-        error={replyTo && !email(replyTo) ? "יש להזין כתובת דוא״ל תקינה" : undefined}
+        error={
+          replyTo && !email(replyTo) ? "יש להזין כתובת דוא״ל תקינה" : undefined
+        }
       />
       <p className="text-sm text-muted-foreground">
         המכתבים נשלחים מכתובת השולח, ותשובות מגיעות לתיבת המענה.

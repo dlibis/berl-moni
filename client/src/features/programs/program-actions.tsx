@@ -5,8 +5,17 @@ import { toast } from "sonner";
 import { write } from "../../services/api";
 import type { Program } from "./types";
 import { Button } from "../../components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
-import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../../components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "../../components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  ConfirmDialog,
+} from "../../components/ui/alert-dialog";
 import { ProgramForm } from "./program-form";
 
 export function ProgramActions({ program }: { program: Program }) {
@@ -24,18 +33,30 @@ export function ProgramActions({ program }: { program: Program }) {
     <div className="float-left flex gap-1">
       <Dialog open={edit} onOpenChange={setEdit}>
         <DialogTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`עריכת ${program.name}`} title="עריכה">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`עריכת ${program.name}`}
+            title="עריכה"
+          >
             <Pencil size={16} />
           </Button>
         </DialogTrigger>
         <DialogContent>
-          <DialogTitle className="text-xl font-semibold">עריכת תוכנית</DialogTitle>
+          <DialogTitle className="text-xl font-semibold">
+            עריכת תוכנית
+          </DialogTitle>
           <ProgramForm initial={program} onDone={() => setEdit(false)} />
         </DialogContent>
       </Dialog>
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`מחיקת ${program.name}`} title="מחיקה">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`מחיקת ${program.name}`}
+            title="מחיקה"
+          >
             <Trash2 size={16} className="text-destructive" />
           </Button>
         </AlertDialogTrigger>

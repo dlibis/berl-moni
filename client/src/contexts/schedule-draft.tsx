@@ -8,7 +8,11 @@ import { useSchedule } from "../hooks/use-schedule";
 type SetRanges = React.Dispatch<React.SetStateAction<Range[]>>;
 const ScheduleDraftContext = createContext<Range[]>([]);
 const ScheduleDraftApiContext = createContext<SetRanges>(() => {});
-export function ScheduleDraftProvider({ children }: { children: React.ReactNode }) {
+export function ScheduleDraftProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const schedule = useSchedule();
   const [ranges, setRanges] = useState<Range[]>([]);
   useEffect(() => {
@@ -17,7 +21,9 @@ export function ScheduleDraftProvider({ children }: { children: React.ReactNode 
   // Both values are referentially stable: `ranges` changes only on edit, `setRanges` never does.
   return (
     <ScheduleDraftContext.Provider value={ranges}>
-      <ScheduleDraftApiContext.Provider value={setRanges}>{children}</ScheduleDraftApiContext.Provider>
+      <ScheduleDraftApiContext.Provider value={setRanges}>
+        {children}
+      </ScheduleDraftApiContext.Provider>
     </ScheduleDraftContext.Provider>
   );
 }

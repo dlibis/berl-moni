@@ -6,7 +6,8 @@ export function useRecover() {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["status"] });
   return useMutation({
-    mutationFn: ({ path }: { path: string }) => write<{ status: string }>(path, "POST"),
+    mutationFn: ({ path }: { path: string }) =>
+      write<{ status: string }>(path, "POST"),
     onSuccess: () => {
       toast.success("הפעולה נשמרה");
       refresh();

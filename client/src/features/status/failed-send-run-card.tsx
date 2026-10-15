@@ -1,6 +1,10 @@
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../../components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  ConfirmDialog,
+} from "../../components/ui/alert-dialog";
 import { useRecover } from "../../hooks/use-recover";
 import { useStatus } from "../../hooks/use-status";
 
@@ -15,12 +19,14 @@ export function FailedSendRunCard() {
         <h2 className="text-xl font-semibold">שליחה שנכשלה</h2>
       </div>
       <p className="mt-4 text-sm">
-        תאריך: {run.day} · נשלחו {run.sent_messages} הודעות · נותרו {run.unsent_messages}
+        תאריך: {run.day} · נשלחו {run.sent_messages} הודעות · נותרו{" "}
+        {run.unsent_messages}
       </p>
       <p className="mt-2 text-sm">שגיאה: {run.error}</p>
       {/^4(?!29)/.test(run.error) ? (
         <p className="mt-2 text-sm">
-          יש לתקן תחילה את תיבת הדואר או את רשימת התפוצה, משום שההשלמה משחזרת את אותה תמונת מצב.
+          יש לתקן תחילה את תיבת הדואר או את רשימת התפוצה, משום שההשלמה משחזרת את
+          אותה תמונת מצב.
         </p>
       ) : null}
       <div className="mt-5 flex flex-wrap gap-2">
@@ -37,7 +43,9 @@ export function FailedSendRunCard() {
               description="השליחה תמשיך רק אל הנמענים שטרם קיבלו את ההודעות בתמונת המצב הקיימת."
               action="השלמת השליחה"
               pending={recover.isPending}
-              onConfirm={() => recover.mutate({ path: `/api/v1/send-runs/${run.id}/resume` })}
+              onConfirm={() =>
+                recover.mutate({ path: `/api/v1/send-runs/${run.id}/resume` })
+              }
             />
           </AlertDialog>
         ) : null}
@@ -51,7 +59,9 @@ export function FailedSendRunCard() {
             action="ביטול השליחה"
             destructive
             pending={recover.isPending}
-            onConfirm={() => recover.mutate({ path: `/api/v1/send-runs/${run.id}/abandon` })}
+            onConfirm={() =>
+              recover.mutate({ path: `/api/v1/send-runs/${run.id}/abandon` })
+            }
           />
         </AlertDialog>
       </div>

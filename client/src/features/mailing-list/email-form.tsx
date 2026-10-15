@@ -6,7 +6,13 @@ import { Button } from "../../components/ui/button";
 import { Field } from "../../components/field";
 
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-export function EmailForm({ initial, onDone }: { initial?: string; onDone: () => void }) {
+export function EmailForm({
+  initial,
+  onDone,
+}: {
+  initial?: string;
+  onDone: () => void;
+}) {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState(initial ?? "");
   const [error, setError] = useState("");
@@ -16,14 +22,23 @@ export function EmailForm({ initial, onDone }: { initial?: string; onDone: () =>
       const next = email.trim().toLowerCase();
       if (initial === next) return;
       await write("/api/v1/mailing_list", "POST", { email: next });
-      if (initial) await write(`/api/v1/mailing_list/${encodeURIComponent(initial)}`, "DELETE");
+      if (initial)
+        await write(
+          `/api/v1/mailing_list/${encodeURIComponent(initial)}`,
+          "DELETE",
+        );
     },
     onSuccess: () => {
       toast.success("הנמען נשמר");
       queryClient.invalidateQueries({ queryKey: ["mailing"] });
       onDone();
     },
-    onError: () => setError(initial ? "לא ניתן לעדכן את הנמען" : "לא ניתן להוסיף את הנמען. ייתכן שהוא קיים."),
+    onError: () =>
+      setError(
+        initial
+          ? "לא ניתן לעדכן את הנמען"
+          : "לא ניתן להוסיף את הנמען. ייתכן שהוא קיים.",
+      ),
   });
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -41,9 +56,15 @@ export function EmailForm({ initial, onDone }: { initial?: string; onDone: () =>
         dir="ltr"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        error={email && !validEmail(email) ? "יש להזין כתובת דוא״ל תקינה" : error}
+        error={
+          email && !validEmail(email) ? "יש להזין כתובת דוא״ל תקינה" : error
+        }
       />
-      {initial ? <p className="text-xs text-muted-foreground">העדכון מחליף את הכתובת הקיימת.</p> : null}
+      {initial ? (
+        <p className="text-xs text-muted-foreground">
+          העדכון מחליף את הכתובת הקיימת.
+        </p>
+      ) : null}
       <Button type="submit" disabled={save.isPending}>
         {save.isPending ? "שומר…" : "שמירה"}
       </Button>

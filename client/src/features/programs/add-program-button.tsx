@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "../../components/ui/dialog";
 import { ProgramForm } from "./program-form";
 
 export function AddProgramButton() {
@@ -15,7 +20,9 @@ export function AddProgramButton() {
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogTitle className="text-xl font-semibold">הוספת תוכנית</DialogTitle>
+        <DialogTitle className="text-xl font-semibold">
+          הוספת תוכנית
+        </DialogTitle>
         <ProgramForm onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>

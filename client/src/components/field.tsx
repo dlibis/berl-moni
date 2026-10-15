@@ -4,7 +4,11 @@ export function Field({
   helper,
   error,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; helper?: string; error?: string }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  helper?: string;
+  error?: string;
+}) {
   return (
     <label className="block text-sm font-medium">
       <span>{label}</span>
@@ -12,7 +16,9 @@ export function Field({
       {error ? (
         <span className="mt-1 block text-xs text-destructive">{error}</span>
       ) : helper ? (
-        <span className="mt-1 block text-xs font-normal text-muted-foreground">{helper}</span>
+        <span className="mt-1 block text-xs font-normal text-muted-foreground">
+          {helper}
+        </span>
       ) : null}
     </label>
   );
