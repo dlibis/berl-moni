@@ -72,3 +72,45 @@ def test_every_v1_post_rejects_cross_origin(app):
 def test_json_content_type_required(app):
     response = app.test_client().post("/api/v1/notifier", data="x", headers={"Origin": "https://berl.site", "Content-Type": "text/plain"})
     assert response.status_code == 403
+
+
+class Upstream:
+    def __init__(self, status_code=200, content=b"{}", cookies=()):
+        from urllib3._collections import HTTPHeaderDict
+        self.status_code = status_code
+        self.content = content
+        self.headers = {"Content-Type": "application/json"}
+        self.raw = type("Raw", (), {"headers": HTTPHeaderDict([("Set-Cookie", c) for c in cookies])})()
+
+
+def test_auth_proxy_forwards_and_strips_cookie_domain(app, monkeypatch):
+    seen = {}
+    def request(method, url, **kwargs):
+        seen.update(method=method, url=url, **kwargs)
+        return Upstream(200, b'{"ok":true}', ["a=1; Domain=neon.tech; Path=/; HttpOnly; Secure; SameSite=Lax", "b=2; Path=/"])
+    monkeypatch.setattr("web.routes.auth_proxy.requests.request", request)
+    client = app.test_client()
+    client.set_cookie("s", "1")
+    response = client.post("/api/auth/sign-in/email?x=1", json={"email": "e", "password": "p"},
+                           headers={"Origin": "https://berl.site", "X-Other": "no"})
+    assert response.status_code == 200 and response.json == {"ok": True}
+    assert seen["method"] == "POST" and seen["url"] == "https://auth.example/sign-in/email?x=1"
+    assert seen["headers"] == {"Cookie": "s=1", "Origin": "https://berl.site", "Content-Type": "application/json", "User-Agent": seen["headers"]["User-Agent"]}
+    assert response.headers.getlist("Set-Cookie") == ["a=1; Path=/; HttpOnly; Secure; SameSite=Lax", "b=2; Path=/"]
+
+
+@pytest.mark.parametrize("upstream,status", [(Upstream(401, b'{"code":"INVALID"}'), 401), (Upstream(502), 503)])
+def test_auth_proxy_status(app, monkeypatch, upstream, status):
+    monkeypatch.setattr("web.routes.auth_proxy.requests.request", lambda *a, **k: upstream)
+    assert app.test_client().get("/api/auth/get-session").status_code == status
+
+
+def test_auth_proxy_timeout_is_503(app, monkeypatch):
+    def timeout(*_args, **_kwargs):
+        raise requests.Timeout()
+    monkeypatch.setattr("web.routes.auth_proxy.requests.request", timeout)
+    assert app.test_client().get("/api/auth/get-session").status_code == 503
+
+
+def test_auth_proxy_rejects_cross_origin(app):
+    assert app.test_client().post("/api/auth/sign-in/email", json={}, headers={"Origin": "https://evil.example"}).status_code == 403

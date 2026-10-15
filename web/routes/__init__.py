@@ -4,6 +4,7 @@ from .notifier import notifier_bp
 from .schedule import schedule_bp
 from .status import status_bp
 from .recovery import recovery_bp
+from .auth_proxy import auth_proxy_bp
 
 
 def register_routes(app):
@@ -13,3 +14,4 @@ def register_routes(app):
     app.register_blueprint(schedule_bp)
     app.register_blueprint(status_bp)
     app.register_blueprint(recovery_bp)
+    app.register_blueprint(auth_proxy_bp)
