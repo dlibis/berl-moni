@@ -8,8 +8,11 @@ export function SignOutButton() {
   const signOut = useMutation({
     mutationFn: () => write("/api/auth/sign-out", "POST", {}),
     onSuccess: () => {
-      queryClient.clear();
+      // clear() would detach useSession's observer, so the router never sees null
       queryClient.setQueryData(["session"], null);
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== "session",
+      });
     },
     onError: () => toast.error("היציאה נכשלה"),
   });
