@@ -1,0 +1,10 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono&family=Outfit:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { --background: 44 24% 96%; --foreground: 150 20% 14%; --card: 0 0% 100%; --card-foreground: 150 20% 14%; --popover: 0 0% 100%; --popover-foreground: 150 20% 14%; --primary: 151 43% 29%; --primary-foreground: 0 0% 100%; --secondary: 48 91% 79%; --secondary-foreground: 150 20% 14%; --muted: 145 14% 92%; --muted-foreground: 150 8% 38%; --accent: 145 24% 87%; --accent-foreground: 150 20% 14%; --destructive: 0 64% 46%; --destructive-foreground: 0 0% 100%; --border: 146 14% 83%; --input: 146 14% 83%; --ring: 151 43% 29%; --radius: .5rem; }
+  @media (prefers-color-scheme: dark) { :root { --background: 150 18% 10%; --foreground: 45 30% 94%; --card: 150 17% 14%; --card-foreground: 45 30% 94%; --popover: 150 17% 14%; --popover-foreground: 45 30% 94%; --primary: 145 44% 47%; --primary-foreground: 150 22% 10%; --secondary: 48 70% 38%; --secondary-foreground: 45 30% 94%; --muted: 150 12% 20%; --muted-foreground: 145 9% 67%; --accent: 150 17% 25%; --accent-foreground: 45 30% 94%; --destructive: 0 64% 57%; --destructive-foreground: 0 0% 100%; --border: 150 12% 27%; --input: 150 12% 27%; --ring: 145 44% 47%; } }
+  * { @apply border-border; } body { @apply min-w-[320px] bg-background font-sans text-foreground antialiased; font-size: 14px; line-height: 1.5; } @media (min-width: 768px) { body { font-size: 16px; } } @media (min-width: 1024px) { body { font-size: 18px; } } h1,h2,h3 { @apply whitespace-nowrap tracking-tight; line-height: 1.15; } h1 { font-size: 25px; } h2 { font-size: 21px; } h3 { font-size: 15px; } @media (min-width:768px) { h1 { font-size:40px } h2 { font-size:34px } h3 { font-size:24px } } @media (min-width:1024px) { h1 { font-size:50px } h2 { font-size:42px } h3 { font-size:30px } }
+}
