@@ -30,3 +30,4 @@ public/
 # Per-environment secrets (.env.test etc.); the example stays tracked
 .env.*
 !.env.example
+.vercel

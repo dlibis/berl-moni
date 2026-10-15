@@ -1,5 +1,25 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "client": {
+      "root": "client/",
+      "framework": "vite",
+      "outputDirectory": "../public",
+      "rewrites": [{ "source": "/((?!.*\\.[^/]+$).*)", "destination": "/index.html" }]
+    },
+    "api": {
+      "root": "./",
+      "framework": "flask",
+      "entrypoint": "web.app:app",
+      "functions": {
+        "web/app.py": {
+          "excludeFiles": "{client/**,bot/**,tests/**,db/**,docs/**,files/**,public/**,.env*,*.xlsx,*.pdf,.claude/**,_bmad-output/**,.pytest_cache/**,.github/**,.neon,seed_programs.py,skills-lock.json}"
+        }
+      }
+    }
+  },
   "rewrites": [
-    { "source": "/((?!api(?:/|$)|.*\\.[^/]+$).*)", "destination": "/index.html" }
+    { "source": "/api/(.*)", "destination": { "service": "api" } },
+    { "source": "/(.*)", "destination": { "service": "client" } }
   ]
 }

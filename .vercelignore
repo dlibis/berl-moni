@@ -1,0 +1,15 @@
+# Never upload secrets or local-only files to Vercel (CLI deploys read the working folder)
+.env*
+!.env.example
+*.xlsx
+*.pdf
+seed_programs.py
+.claude
+.neon
+.pytest_cache
+_bmad-output
+.playwright-mcp
+files
+docs
+tests
+bot
