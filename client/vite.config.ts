@@ -6,5 +6,5 @@ export default defineConfig({
   publicDir: "static",
   plugins: [react()],
   build: { outDir: "../public", emptyOutDir: true },
-  server: { proxy: { "/api": "http://localhost:5000" } },
+  server: { proxy: { "/api": "http://localhost:5001" } },
 })
