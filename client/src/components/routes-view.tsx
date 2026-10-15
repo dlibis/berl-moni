@@ -3,11 +3,11 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { onUnauthenticated } from "../lib/api";
 import { AppLayout } from "./layout";
 import { NotSignedIn } from "./not-signed-in";
-import { Home } from "../screens/home";
-import { Programs } from "../screens/programs";
-import { MailingList } from "../screens/mailing-list";
-import { Schedule } from "../screens/schedule";
-import { Mailbox } from "../screens/mailbox";
+import { Home } from "../pages/home";
+import { Programs } from "../pages/programs";
+import { MailingList } from "../pages/mailing-list";
+import { Schedule } from "../pages/schedule";
+import { Mailbox } from "../pages/mailbox";
 
 export function RoutesView() {
   const [signedOut, setSignedOut] = useState(false);

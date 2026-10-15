@@ -1,15 +1,7 @@
-import type { Program } from "../../lib/programs";
+import type { Program } from "./types";
 import { ProgramActions } from "./program-actions";
 
-export function ProgramRow({
-  program,
-  onRemove,
-  pending,
-}: {
-  program: Program;
-  onRemove: () => void;
-  pending: boolean;
-}) {
+export function ProgramRow({ program }: { program: Program }) {
   return (
     <tr className="border-t">
       <td className="p-3 font-mono">{program.code}</td>
@@ -17,7 +9,7 @@ export function ProgramRow({
         {program.name}
       </td>
       <td className="p-2">
-        <ProgramActions program={program} onRemove={onRemove} pending={pending} />
+        <ProgramActions program={program} />
       </td>
     </tr>
   );
