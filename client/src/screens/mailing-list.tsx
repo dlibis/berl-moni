@@ -1,61 +1,18 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { get, write } from "../lib/api";
 import { Button } from "../components/ui/button";
-import { Field } from "../components/field";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../components/ui/dialog";
-import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../components/ui/alert-dialog";
-import { ErrorState, Loading, PageHeader } from "../components/states";
+import { ErrorState } from "../components/error-state";
+import { Loading } from "../components/loading";
+import { PageHeader } from "../components/page-header";
 import { Pagination } from "../components/pagination";
+import { EmailActions } from "./mailing-list/email-actions";
+import { EmailForm } from "./mailing-list/email-form";
 
 type Mailing = { emails: string[]; count: number; cap: number };
-const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-function EmailForm({ initial, onDone }: { initial?: string; onDone: () => void }) {
-  const queryClient = useQueryClient();
-  const [email, setEmail] = useState(initial ?? "");
-  const [error, setError] = useState("");
-  const save = useMutation({
-    mutationFn: async () => {
-      // No update endpoint: add the new address first so a failed add never loses the old one.
-      const next = email.trim().toLowerCase();
-      if (initial === next) return;
-      await write("/api/v1/mailing_list", "POST", { email: next });
-      if (initial) await write(`/api/v1/mailing_list/${encodeURIComponent(initial)}`, "DELETE");
-    },
-    onSuccess: () => {
-      toast.success("הנמען נשמר");
-      queryClient.invalidateQueries({ queryKey: ["mailing"] });
-      onDone();
-    },
-    onError: () => setError(initial ? "לא ניתן לעדכן את הנמען" : "לא ניתן להוסיף את הנמען. ייתכן שהוא קיים."),
-  });
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!validEmail(email)) {
-      setError("יש להזין כתובת דוא״ל תקינה");
-      return;
-    }
-    save.mutate();
-  }
-  return (
-    <form onSubmit={submit} className="mt-5 space-y-4">
-      <Field
-        label="כתובת דוא״ל"
-        type="email"
-        dir="ltr"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        error={email && !validEmail(email) ? "יש להזין כתובת דוא״ל תקינה" : error}
-      />
-      {initial ? <p className="text-xs text-muted-foreground">העדכון מחליף את הכתובת הקיימת.</p> : null}
-      <Button type="submit" disabled={save.isPending}>
-        {save.isPending ? "שומר…" : "שמירה"}
-      </Button>
-    </form>
-  );
-}
 export function MailingList() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -163,38 +120,5 @@ export function MailingList() {
         </>
       )}
     </>
-  );
-}
-function EmailActions({ email, remove, pending }: { email: string; remove: () => void; pending: boolean }) {
-  const [edit, setEdit] = useState(false);
-  return (
-    <div className="float-left flex gap-1">
-      <Dialog open={edit} onOpenChange={setEdit}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`עריכת ${email}`} title="עריכה">
-            <Pencil size={16} />
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogTitle className="text-xl font-semibold">עריכת נמען</DialogTitle>
-          <EmailForm initial={email} onDone={() => setEdit(false)} />
-        </DialogContent>
-      </Dialog>
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`מחיקת ${email}`} title="מחיקה">
-            <Trash2 size={16} className="text-destructive" />
-          </Button>
-        </AlertDialogTrigger>
-        <ConfirmDialog
-          title="למחוק את הנמען?"
-          description={`הכתובת ${email} תוסר מרשימת התפוצה.`}
-          action="מחיקת נמען"
-          destructive
-          pending={pending}
-          onConfirm={remove}
-        />
-      </AlertDialog>
-    </div>
   );
 }

@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { get, write } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Field } from "../components/field";
-import { ErrorState, Loading, PageHeader } from "../components/states";
+import { ErrorState } from "../components/error-state";
+import { Loading } from "../components/loading";
+import { PageHeader } from "../components/page-header";
 type MailboxData = { from_address: string; reply_to_address: string };
 const email = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 export function Mailbox() {

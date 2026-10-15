@@ -4,7 +4,9 @@ import { toast } from "sonner";
 import { get, write, ApiError } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../components/ui/alert-dialog";
-import { ErrorState, Loading, PageHeader } from "../components/states";
+import { ErrorState } from "../components/error-state";
+import { Loading } from "../components/loading";
+import { PageHeader } from "../components/page-header";
 
 type Scan = {
   ran_at: string;

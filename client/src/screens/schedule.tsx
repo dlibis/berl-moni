@@ -4,7 +4,9 @@ import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { get, write } from "../lib/api";
 import { Button } from "../components/ui/button";
-import { ErrorState, Loading, PageHeader } from "../components/states";
+import { ErrorState } from "../components/error-state";
+import { Loading } from "../components/loading";
+import { PageHeader } from "../components/page-header";
 
 type Day = { enabled: boolean; time: string };
 type Range = { from: string; to: string; days: Record<string, Day> };

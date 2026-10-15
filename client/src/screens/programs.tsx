@@ -1,60 +1,19 @@
-import { FormEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { get, write } from "../lib/api";
+import type { Program } from "../lib/programs";
 import { Button } from "../components/ui/button";
-import { Field } from "../components/field";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../components/ui/dialog";
-import { AlertDialog, AlertDialogTrigger, ConfirmDialog } from "../components/ui/alert-dialog";
-import { ErrorState, Loading, PageHeader } from "../components/states";
+import { ErrorState } from "../components/error-state";
+import { Loading } from "../components/loading";
+import { PageHeader } from "../components/page-header";
 import { Pagination } from "../components/pagination";
+import { ProgramActions } from "./programs/program-actions";
+import { ProgramForm } from "./programs/program-form";
+import { ProgramRow } from "./programs/program-row";
 
-type Program = { code: string; name: string };
-const validCode = (value: string) => /^\d{1,6}$/.test(value);
-function ProgramForm({ initial, onDone }: { initial?: Program; onDone: () => void }) {
-  const queryClient = useQueryClient();
-  const [code, setCode] = useState(initial?.code ?? "");
-  const [name, setName] = useState(initial?.name ?? "");
-  const [error, setError] = useState("");
-  const save = useMutation({
-    mutationFn: () =>
-      initial
-        ? write<Program>(`/api/v1/master/${initial.code}`, "PUT", { code, name })
-        : write<Program>("/api/v1/master", "POST", { code, name }),
-    onSuccess: () => {
-      toast.success("התוכנית נשמרה");
-      queryClient.invalidateQueries({ queryKey: ["programs"] });
-      onDone();
-    },
-    onError: () => setError("לא ניתן לשמור את התוכנית. ייתכן שהקוד כבר קיים."),
-  });
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!validCode(code) || !name.trim()) {
-      setError("יש למלא קוד בן עד שש ספרות ושם תוכנית");
-      return;
-    }
-    save.mutate();
-  }
-  return (
-    <form className="mt-5 space-y-4" onSubmit={submit}>
-      <Field
-        label="קוד תוכנית"
-        value={code}
-        maxLength={6}
-        inputMode="numeric"
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-        error={!validCode(code) && code ? "קוד התוכנית מכיל ספרות בלבד" : undefined}
-      />
-      <Field label="שם התוכנית" value={name} onChange={(e) => setName(e.target.value)} />
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <Button type="submit" disabled={save.isPending}>
-        {save.isPending ? "שומר…" : "שמירה"}
-      </Button>
-    </form>
-  );
-}
 export function Programs() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -156,67 +115,5 @@ export function Programs() {
         </>
       )}
     </>
-  );
-}
-function ProgramActions({
-  program,
-  onRemove,
-  pending,
-}: {
-  program: Program;
-  onRemove: () => void;
-  pending: boolean;
-}) {
-  const [edit, setEdit] = useState(false);
-  return (
-    <div className="float-left flex gap-1">
-      <Dialog open={edit} onOpenChange={setEdit}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`עריכת ${program.name}`} title="עריכה">
-            <Pencil size={16} />
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogTitle className="text-xl font-semibold">עריכת תוכנית</DialogTitle>
-          <ProgramForm initial={program} onDone={() => setEdit(false)} />
-        </DialogContent>
-      </Dialog>
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label={`מחיקת ${program.name}`} title="מחיקה">
-            <Trash2 size={16} className="text-destructive" />
-          </Button>
-        </AlertDialogTrigger>
-        <ConfirmDialog
-          title="למחוק את התוכנית?"
-          description={`התוכנית ${program.name} (${program.code}) תימחק.`}
-          action="מחיקת תוכנית"
-          destructive
-          pending={pending}
-          onConfirm={onRemove}
-        />
-      </AlertDialog>
-    </div>
-  );
-}
-function ProgramRow({
-  program,
-  onRemove,
-  pending,
-}: {
-  program: Program;
-  onRemove: () => void;
-  pending: boolean;
-}) {
-  return (
-    <tr className="border-t">
-      <td className="p-3 font-mono">{program.code}</td>
-      <td className="max-w-0 truncate p-3" title={program.name}>
-        {program.name}
-      </td>
-      <td className="p-2">
-        <ProgramActions program={program} onRemove={onRemove} pending={pending} />
-      </td>
-    </tr>
   );
 }
