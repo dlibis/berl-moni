@@ -3,8 +3,9 @@ import { Button } from "../../components/ui/button";
 import {
   AlertDialog,
   AlertDialogTrigger,
-  ConfirmDialog,
 } from "../../components/ui/alert-dialog";
+import { ConfirmDialog } from "../../components/confirm-dialog";
+import { day } from "../../utils/date-time";
 import { useRecover } from "../../hooks/use-recover";
 import { useStatus } from "../../hooks/use-status";
 
@@ -19,14 +20,14 @@ export function FailedSendRunCard() {
         <h2 className="text-xl font-semibold">שליחה שנכשלה</h2>
       </div>
       <p className="mt-4 text-sm">
-        תאריך: {run.day} · נשלחו {run.sent_messages} הודעות · נותרו{" "}
+        תאריך: {day(run.day)} · נשלחו {run.sent_messages} הודעות · נותרו{" "}
         {run.unsent_messages}
       </p>
       <p className="mt-2 text-sm">שגיאה: {run.error}</p>
       {/^4(?!29)/.test(run.error) ? (
         <p className="mt-2 text-sm">
-          יש לתקן תחילה את תיבת הדואר או את רשימת התפוצה, משום שההשלמה משחזרת את
-          אותה תמונת מצב.
+          יש לתקן תחילה את כתובות השליחה או את רשימת התפוצה, משום שההשלמה משחזרת
+          את אותה תמונת מצב.
         </p>
       ) : null}
       <div className="mt-5 flex flex-wrap gap-2">

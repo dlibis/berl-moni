@@ -1,6 +1,6 @@
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
-import { dateTime } from "../../utils/date-time";
+import { dateTime, day } from "../../utils/date-time";
 import { useStatus } from "../../hooks/use-status";
 
 export function LastScanCard() {
@@ -9,7 +9,7 @@ export function LastScanCard() {
   if (status.isError || !status.data) return <ErrorState />;
   const scan = status.data.latest_scan;
   return (
-    <section className="rounded-lg border bg-card p-5 shadow-sm">
+    <section className="rounded-lg border bg-card p-5">
       <h2 className="text-xl font-semibold">סריקה אחרונה</h2>
       {scan ? (
         <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
@@ -47,7 +47,10 @@ export function LastScanCard() {
         <p className="mt-4 text-muted-foreground">עדיין לא בוצעה סריקה</p>
       )}
       <p className="mt-5 text-sm text-muted-foreground">
-        יום השליחה הבא: {status.data.next_scheduled_send_day ?? "לא נקבע"}
+        יום השליחה הבא:{" "}
+        {status.data.next_scheduled_send_day
+          ? day(status.data.next_scheduled_send_day)
+          : "לא נקבע"}
       </p>
     </section>
   );

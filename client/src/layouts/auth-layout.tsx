@@ -3,7 +3,7 @@ import { Outlet } from "react-router-dom";
 export function AuthLayout() {
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
-      <section className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-sm">
+      <section className="w-full max-w-sm rounded-lg border bg-card p-6">
         <img
           src="/logo.png"
           alt="לוגו ברל מוני"

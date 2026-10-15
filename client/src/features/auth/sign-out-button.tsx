@@ -18,9 +18,9 @@ export function SignOutButton() {
       type="button"
       onClick={() => signOut.mutate()}
       disabled={signOut.isPending}
-      className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-sm hover:bg-accent lg:min-h-10"
+      className="flex min-h-12 w-full items-center gap-3 rounded-md px-3 text-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground lg:min-h-10"
     >
-      <LogOut size={20} />
+      <LogOut size={16} />
       יציאה
     </button>
   );

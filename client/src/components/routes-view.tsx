@@ -13,6 +13,7 @@ import { MailingList } from "../pages/mailing-list";
 import { Schedule } from "../pages/schedule";
 import { Mailbox } from "../pages/mailbox";
 import { SignIn } from "../pages/sign-in";
+import { ForgotPassword } from "../pages/forgot-password";
 import { ResetPassword } from "../pages/reset-password";
 
 export function RoutesView() {
@@ -28,7 +29,12 @@ export function RoutesView() {
     <Routes>
       <Route element={<AuthLayout />}>
         <Route path="/reset-password" element={<ResetPassword />} />
-        {session.data ? null : <Route path="/sign-in" element={<SignIn />} />}
+        {session.data ? null : (
+          <>
+            <Route path="/sign-in" element={<SignIn />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+          </>
+        )}
       </Route>
       {session.data ? (
         <Route element={<AppLayout />}>

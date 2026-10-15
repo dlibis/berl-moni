@@ -4,8 +4,19 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { write } from "../../services/api";
 import { Button } from "../../components/ui/button";
+import { DatePicker } from "../../components/date-picker";
+import { Checkbox } from "../../components/ui/checkbox";
+import { Label } from "../../components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
+import { AddRangeButton } from "./add-range-button";
 import type { Day, Range } from "./types";
 import { useSchedule } from "../../hooks/use-schedule";
 import {
@@ -38,7 +49,7 @@ export function ScheduleEditor() {
         schedule: ranges,
       }),
     onSuccess: () => {
-      toast.success("לוח השליחה נשמר");
+      toast.success("מועדי השליחה נשמרו");
       setError("");
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
@@ -66,106 +77,127 @@ export function ScheduleEditor() {
       }),
     );
   }
+  function setTime(index: number, time: string) {
+    setRanges((old) =>
+      old.map((range, current) =>
+        current === index
+          ? {
+              ...range,
+              days: Object.fromEntries(
+                weekdays.map(([key]) => [
+                  key,
+                  { enabled: range.days[key]?.enabled ?? false, time },
+                ]),
+              ),
+            }
+          : range,
+      ),
+    );
+  }
   if (schedule.isPending) return <Loading />;
   if (schedule.isError || !schedule.data) return <ErrorState />;
   return (
-    <div className="space-y-4">
+    <div className="max-w-2xl space-y-4">
       {ranges.length === 0 ? (
-        <div className="rounded-lg border bg-card p-6 text-muted-foreground">
+        <div className="rounded-lg border bg-card p-5 text-muted-foreground">
           לא הוגדרו טווחי שליחה. הוסיפו טווח כדי להתחיל.
         </div>
       ) : (
-        ranges.map((range, index) => (
-          <section
-            key={`${range.from}-${index}`}
-            className="rounded-lg border bg-card p-5"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold">טווח {index + 1}</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="מחיקת טווח"
-                title="מחיקת טווח"
-                onClick={() =>
-                  setRanges((old) => old.filter((_, i) => i !== index))
-                }
-              >
-                <Trash2 size={16} className="text-destructive" />
-              </Button>
-            </div>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-medium">
-                מתאריך
-                <input
-                  type="date"
-                  value={range.from}
-                  onChange={(e) => patchRange(index, { from: e.target.value })}
-                  className="mt-1 h-12 w-full rounded-md border bg-background px-3 text-sm lg:h-10"
-                />
-              </label>
-              <label className="text-sm font-medium">
-                עד תאריך
-                <input
-                  type="date"
-                  value={range.to}
-                  onChange={(e) => patchRange(index, { to: e.target.value })}
-                  className="mt-1 h-12 w-full rounded-md border bg-background px-3 text-sm lg:h-10"
-                />
-              </label>
-            </div>
-            <fieldset className="mt-5">
-              <legend className="text-sm font-medium">ימי שליחה</legend>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {weekdays.map(([key, label]) => {
-                  const day = range.days[key] ?? {
-                    enabled: false,
-                    time: "08:00",
-                  };
-                  return (
+        ranges.map((range, index) => {
+          const time =
+            Object.values(range.days).find((day) => day.enabled)?.time ??
+            "08:00";
+          return (
+            <section
+              key={`${range.from}-${index}`}
+              className="rounded-lg border bg-card p-6"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">טווח {index + 1}</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="מחיקת טווח"
+                  title="מחיקת טווח"
+                  onClick={() =>
+                    setRanges((old) => old.filter((_, i) => i !== index))
+                  }
+                >
+                  <Trash2 size={16} className="text-destructive" />
+                </Button>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor={`from-${index}`}>מתאריך</Label>
+                  <DatePicker
+                    id={`from-${index}`}
+                    value={range.from}
+                    onChange={(from) => patchRange(index, { from })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`to-${index}`}>עד תאריך</Label>
+                  <DatePicker
+                    id={`to-${index}`}
+                    value={range.to}
+                    onChange={(to) => patchRange(index, { to })}
+                  />
+                </div>
+              </div>
+              <fieldset className="mt-6">
+                <legend className="text-sm font-medium">ימי שליחה</legend>
+                <div className="mt-2 flex flex-wrap gap-x-6">
+                  {weekdays.map(([key, label]) => (
                     <div
                       key={key}
-                      className="flex min-h-12 items-center gap-3 rounded-md border px-3 lg:min-h-10"
+                      className="flex h-12 items-center gap-2 px-1 lg:h-10"
                     >
-                      <input
+                      <Checkbox
                         id={`${index}-${key}`}
-                        type="checkbox"
-                        checked={day.enabled}
-                        onChange={(e) =>
-                          patchDay(index, key, { enabled: e.target.checked })
+                        checked={range.days[key]?.enabled ?? false}
+                        onCheckedChange={(checked) =>
+                          patchDay(index, key, {
+                            enabled: checked === true,
+                            time,
+                          })
                         }
-                        className="h-4 w-4 accent-primary"
                       />
-                      <label
-                        htmlFor={`${index}-${key}`}
-                        className="w-7 text-sm"
-                      >
-                        {label}
-                      </label>
-                      <select
-                        disabled={!day.enabled}
-                        value={day.time}
-                        onChange={(e) =>
-                          patchDay(index, key, { time: e.target.value })
-                        }
-                        className="ms-auto h-9 rounded border bg-background px-2 text-sm disabled:opacity-50"
-                      >
-                        {hours.map((time) => (
-                          <option key={time}>{time}</option>
-                        ))}
-                      </select>
+                      <Label htmlFor={`${index}-${key}`}>{label}</Label>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              </fieldset>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor={`time-${index}`}>שעת שליחה</Label>
+                  <Select
+                    value={time}
+                    onValueChange={(value) => setTime(index, value)}
+                  >
+                    <SelectTrigger id={`time-${index}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hours.map((hour) => (
+                        <SelectItem key={hour} value={hour}>
+                          {hour}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </fieldset>
-          </section>
-        ))
+            </section>
+          );
+        })
       )}
+      <AddRangeButton />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      <Button disabled={save.isPending} onClick={() => save.mutate()}>
-        {save.isPending ? "שומר…" : "שמירה"}
-      </Button>
+      <div className="pt-4">
+        <Button disabled={save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? "שומר…" : "שמירה"}
+        </Button>
+      </div>
     </div>
   );
 }

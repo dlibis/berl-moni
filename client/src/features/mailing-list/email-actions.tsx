@@ -13,8 +13,8 @@ import {
 import {
   AlertDialog,
   AlertDialogTrigger,
-  ConfirmDialog,
 } from "../../components/ui/alert-dialog";
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { EmailForm } from "./email-form";
 
 export function EmailActions({ email }: { email: string }) {
@@ -24,7 +24,6 @@ export function EmailActions({ email }: { email: string }) {
     mutationFn: () =>
       write(`/api/v1/mailing_list/${encodeURIComponent(email)}`, "DELETE"),
     onSuccess: () => {
-      toast.success("הנמען נמחק");
       queryClient.invalidateQueries({ queryKey: ["mailing"] });
     },
     onError: () => toast.error("לא ניתן למחוק את הנמען"),

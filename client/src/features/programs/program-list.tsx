@@ -2,6 +2,15 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
 import { Pagination } from "../../components/pagination";
 import { ProgramActions } from "./program-actions";
 import { ProgramRow } from "./program-row";
@@ -24,46 +33,49 @@ export function ProgramList() {
   return (
     <>
       <div className="max-w-xl">
-        <label className="relative block">
-          <span className="sr-only">חיפוש תוכנית</span>
+        <div className="relative">
+          <Label htmlFor="search" className="sr-only">
+            חיפוש תוכנית
+          </Label>
           <Search
-            className="absolute right-3 top-3 text-muted-foreground"
-            size={18}
+            className="absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            size={16}
           />
-          <input
+          <Input
+            id="search"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
               setPage(0);
             }}
             placeholder="חיפוש לפי קוד או שם"
-            className="h-12 w-full rounded-md border bg-background ps-10 pe-3 text-sm outline-none focus:ring-2 focus:ring-ring lg:h-10"
+            className="ps-10"
           />
-        </label>
+        </div>
       </div>
       {filtered.length === 0 ? (
         <div className="mt-6 rounded-lg border bg-card p-6 text-muted-foreground">
-          אין תוכניות עדיין
+          {search.trim() ? "לא נמצאו תוכניות תואמות" : "אין תוכניות עדיין"}
         </div>
       ) : (
         <>
           <div className="mt-5 hidden overflow-hidden rounded-lg border md:block">
-            <table className="w-full text-sm">
-              <thead className="bg-muted text-start">
-                <tr>
-                  <th className="p-3 text-start font-semibold">קוד</th>
-                  <th className="p-3 text-start font-semibold">שם</th>
-                  <th className="p-3 text-start">
+            <Table>
+              <TableHeader className="bg-muted">
+                <TableRow>
+                  <TableHead className="text-start">קוד</TableHead>
+                  <TableHead className="text-start">שם</TableHead>
+                  <TableHead>
                     <span className="sr-only">פעולות</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((program) => (
                   <ProgramRow key={program.code} program={program} />
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           <div className="mt-5 space-y-3 md:hidden">
             {rows.map((program) => (

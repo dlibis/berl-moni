@@ -1,16 +1,17 @@
 import type { Program } from "./types";
 import { ProgramActions } from "./program-actions";
+import { TableCell, TableRow } from "../../components/ui/table";
 
 export function ProgramRow({ program }: { program: Program }) {
   return (
-    <tr className="border-t">
-      <td className="p-3 font-mono">{program.code}</td>
-      <td className="max-w-0 truncate p-3" title={program.name}>
+    <TableRow>
+      <TableCell className="font-mono">{program.code}</TableCell>
+      <TableCell className="max-w-0 truncate" title={program.name}>
         {program.name}
-      </td>
-      <td className="p-2">
+      </TableCell>
+      <TableCell>
         <ProgramActions program={program} />
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }

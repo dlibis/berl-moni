@@ -14,8 +14,8 @@ import {
 import {
   AlertDialog,
   AlertDialogTrigger,
-  ConfirmDialog,
 } from "../../components/ui/alert-dialog";
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { ProgramForm } from "./program-form";
 
 export function ProgramActions({ program }: { program: Program }) {
@@ -24,7 +24,6 @@ export function ProgramActions({ program }: { program: Program }) {
   const remove = useMutation({
     mutationFn: () => write(`/api/v1/master/${program.code}`, "DELETE"),
     onSuccess: () => {
-      toast.success("התוכנית נמחקה");
       queryClient.invalidateQueries({ queryKey: ["programs"] });
     },
     onError: () => toast.error("לא ניתן למחוק את התוכנית"),

@@ -3,8 +3,8 @@ import { Button } from "../../components/ui/button";
 import {
   AlertDialog,
   AlertDialogTrigger,
-  ConfirmDialog,
 } from "../../components/ui/alert-dialog";
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { dateTime } from "../../utils/date-time";
 import { useRecover } from "../../hooks/use-recover";
 import { useStatus } from "../../hooks/use-status";

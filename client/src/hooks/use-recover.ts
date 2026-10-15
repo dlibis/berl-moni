@@ -9,7 +9,6 @@ export function useRecover() {
     mutationFn: ({ path }: { path: string }) =>
       write<{ status: string }>(path, "POST"),
     onSuccess: () => {
-      toast.success("הפעולה נשמרה");
       refresh();
     },
     onError: (error) => {

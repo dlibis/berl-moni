@@ -1,6 +1,5 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { write } from "../../services/api";
 import { Button } from "../../components/ui/button";
 import { Field } from "../../components/field";
@@ -29,7 +28,6 @@ export function EmailForm({
         );
     },
     onSuccess: () => {
-      toast.success("הנמען נשמר");
       queryClient.invalidateQueries({ queryKey: ["mailing"] });
       onDone();
     },

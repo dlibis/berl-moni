@@ -28,7 +28,7 @@ export function MailboxForm() {
         reply_to_address: replyTo,
       }),
     onSuccess: () => {
-      toast.success("תיבת הדואר נשמרה");
+      toast.success("כתובות השליחה נשמרו");
       setError("");
       queryClient.invalidateQueries({ queryKey: ["mailbox"] });
     },
@@ -77,9 +77,6 @@ export function MailboxForm() {
           replyTo && !email(replyTo) ? "יש להזין כתובת דוא״ל תקינה" : undefined
         }
       />
-      <p className="text-sm text-muted-foreground">
-        המכתבים נשלחים מכתובת השולח, ותשובות מגיעות לתיבת המענה.
-      </p>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <Button type="submit" disabled={save.isPending}>
         {save.isPending ? "שומר…" : "שמירה"}

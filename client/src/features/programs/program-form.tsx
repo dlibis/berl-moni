@@ -1,6 +1,5 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { write } from "../../services/api";
 import type { Program } from "./types";
 import { Button } from "../../components/ui/button";
@@ -27,7 +26,6 @@ export function ProgramForm({
           })
         : write<Program>("/api/v1/master", "POST", { code, name }),
     onSuccess: () => {
-      toast.success("התוכנית נשמרה");
       queryClient.invalidateQueries({ queryKey: ["programs"] });
       onDone();
     },

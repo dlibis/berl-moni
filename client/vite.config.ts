@@ -5,6 +5,7 @@ export default defineConfig({
   root: ".",
   publicDir: "static",
   plugins: [react()],
+  resolve: { alias: { "@": "/src" } },
   build: { outDir: "../public", emptyOutDir: true },
   server: { proxy: { "/api": "http://localhost:5001" } },
 })

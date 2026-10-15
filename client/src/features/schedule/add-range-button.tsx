@@ -15,7 +15,12 @@ export function AddRangeButton() {
   // Hidden until loaded, as before: a range added earlier would be overwritten when the data arrives.
   if (!schedule.data) return null;
   return (
-    <Button onClick={() => setRanges((old) => [...old, blank()])}>
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-12 text-sm lg:h-8"
+      onClick={() => setRanges((old) => [...old, blank()])}
+    >
       <Plus size={16} />
       הוספת טווח תאריכים
     </Button>
