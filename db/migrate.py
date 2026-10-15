@@ -1,6 +1,6 @@
 """Apply new db/migrations/NNN_*.sql files in filename order.
 
-Usage: python db/migrate.py [--test]   (DATABASE_URL_DIRECT, or TEST_DATABASE_URL with --test)
+Usage: python db/migrate.py [--test]   (DATABASE_URL_UNPOOLED, or TEST_DATABASE_URL with --test)
 """
 import os
 import sys
@@ -15,7 +15,7 @@ LOCK_KEY = 4207  # any constant; only migrate.py takes it
 
 def main(argv):
     load_dotenv()
-    var = "TEST_DATABASE_URL" if "--test" in argv else "DATABASE_URL_DIRECT"
+    var = "TEST_DATABASE_URL" if "--test" in argv else "DATABASE_URL_UNPOOLED"
     url = os.environ.get(var)
     if not url:
         sys.exit(f"{var} is not set")
