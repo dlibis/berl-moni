@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import type { Range } from "./types";
 import { useSchedule } from "./use-schedule";
-import { useScheduleDraft } from "./schedule-draft";
+import { useScheduleDraftApi } from "./schedule-draft";
 
 const blank = (): Range => ({
   from: new Date().toISOString().slice(0, 10),
@@ -11,7 +11,7 @@ const blank = (): Range => ({
 });
 export function AddRangeButton() {
   const schedule = useSchedule();
-  const { setRanges } = useScheduleDraft();
+  const setRanges = useScheduleDraftApi();
   // Hidden until loaded, as before: a range added earlier would be overwritten when the data arrives.
   if (!schedule.data) return null;
   return (

@@ -8,7 +8,7 @@ import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
 import type { Day, Range } from "./types";
 import { useSchedule } from "./use-schedule";
-import { useScheduleDraft } from "./schedule-draft";
+import { useScheduleDraft, useScheduleDraftApi } from "./schedule-draft";
 
 const weekdays: [string, string][] = [
   ["sun", "א׳"],
@@ -23,7 +23,8 @@ const hours = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2
 export function ScheduleEditor() {
   const queryClient = useQueryClient();
   const schedule = useSchedule();
-  const { ranges, setRanges } = useScheduleDraft();
+  const ranges = useScheduleDraft();
+  const setRanges = useScheduleDraftApi();
   const [error, setError] = useState("");
   const save = useMutation({
     mutationFn: () => write<{ schedule: Range[] }>("/api/v1/schedule", "POST", { schedule: ranges }),
