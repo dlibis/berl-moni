@@ -114,3 +114,12 @@ def test_auth_proxy_timeout_is_503(app, monkeypatch):
 
 def test_auth_proxy_rejects_cross_origin(app):
     assert app.test_client().post("/api/auth/sign-in/email", json={}, headers={"Origin": "https://evil.example"}).status_code == 403
+
+
+def test_auth_proxy_only_allowlisted_paths(app, monkeypatch):
+    monkeypatch.setattr("web.routes.auth_proxy.requests.request", lambda *a, **k: Upstream())
+    client = app.test_client()
+    assert client.get("/api/auth/ok").status_code == 404
+    assert client.post("/api/auth/sign-up/email", json={}, headers={"Origin": "https://berl.site"}).status_code == 404
+    response = client.get("/api/auth/get-session")
+    assert response.content_type == "application/json" and response.headers["X-Content-Type-Options"] == "nosniff"
