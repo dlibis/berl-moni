@@ -45,13 +45,8 @@ def _extract(name):
     return Extractor(MASTER, fake_analyze, open_letter).extract(str(FILES / name))
 
 
-TABLE_LAYOUT_BUG = "the table reader misses the הוצאה from/to columns in this letter's layout (headers shift between pages), so every row's change looks unbalanced and the letter fails as extract_error"
-
-
 @pytest.mark.parametrize("name", [
-    "pending_230_heading_variant.pdf",
-    pytest.param("pending_206_213_heading_variant.pdf",
-                 marks=pytest.mark.xfail(strict=True, reason=TABLE_LAYOUT_BUG))])
+    "pending_230_heading_variant.pdf", "pending_206_213_heading_variant.pdf"])
 def test_heading_variants_found_with_narrative(calls, name):
     result = _extract(name)
     assert result.relevant and not result.scanned
@@ -83,9 +78,8 @@ def test_arithmetic_failure_fails_a_text_letter(calls, monkeypatch):
 
 
 @pytest.mark.parametrize("name", [
-    "pending_230_heading_variant.pdf",
-    pytest.param("pending_206_213_heading_variant.pdf",
-                 marks=pytest.mark.xfail(strict=True, reason=TABLE_LAYOUT_BUG))])
+    "pending_230_heading_variant.pdf", "pending_206_213_heading_variant.pdf", "21658_original.pdf",
+    "4_17d4808b-426e-f111-a13e-005056aa7c52_13_21634.pdf"])
 def test_arithmetic_passes_on_real_letters(name):
     assert open_letter(str(FILES / name)).arithmetic_failures() == []
 

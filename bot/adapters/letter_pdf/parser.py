@@ -64,32 +64,31 @@ class BudgetLetter:
                              self.NAME_COLUMN: ""})
 
     def arithmetic_failures(self) -> list[str]:
-        """Codes of kept rows whose change amounts disagree with to - from.
+        """Codes of rows whose change amounts disagree with to - from.
 
-        The change values sit in the unlabelled columns before the first metric column;
-        each row's non-zero changes must equal its non-zero (to - from) values. A row with
-        an unreadable change cell can't be verified and is not reported.
+        Each table is checked on its own: the change values sit in the columns before its first
+        metric column, and the pages of one letter spell those headers differently, so a merged
+        table would misplace them. A row's non-zero changes must equal its non-zero (to - from)
+        values; a row with an unreadable change cell can't be verified and is not reported.
         """
         if self.doc.scanned:
             return []  # ponytail: OCR tables have no cell structure to check
+        tables = [df for df in self.doc.tables if any(str(c).endswith("delta") for c in df.columns)]
+        return [code for table in tables for code in self._unbalanced_rows(table)]
+
+    def _unbalanced_rows(self, table) -> list[str]:
         import pandas as pd
 
-        data_tables = [
-            df for df in self.doc.tables if any(str(c).endswith("delta") for c in df.columns)
-        ]
-        combined = pd.concat(data_tables, ignore_index=True)
-        code_column = self._find_code_column(combined)
-        combined = combined[
-            combined[code_column].astype(str).str.strip().str.fullmatch(r"\d{5,6}")]
+        code_column = self._find_code_column(table)
+        rows = table[table[code_column].astype(str).str.strip().str.fullmatch(r"\d{5,6}")]
         prefixes = [prefix for _, prefix in self.METRICS]
-        columns = list(combined.columns)
+        columns = list(table.columns)
         first_metric = next(
-            (i for i, c in enumerate(columns) if any(str(c).startswith(p) for p in prefixes)),
-            0)
+            (i for i, c in enumerate(columns) if any(str(c).startswith(p) for p in prefixes)), 0)
         change_columns = columns[:first_metric]
 
         bad = []
-        for _, row in combined.iterrows():
+        for _, row in rows.iterrows():
             deltas = []
             for prefix in prefixes:
                 lo, hi = row.get(f"{prefix} from"), row.get(f"{prefix} to")
@@ -97,7 +96,7 @@ class BudgetLetter:
                     deltas.append(hi - lo)
             changes, readable = [], True
             for column in change_columns:
-                cell = str(row[column]).strip().strip("\n")
+                cell = str(row[column]).strip()
                 if cell in ("", "nan"):
                     continue
                 value = PdfDocument._parse_trailing_minus(cell)

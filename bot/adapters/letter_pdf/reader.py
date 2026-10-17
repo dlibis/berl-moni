@@ -30,6 +30,10 @@ import pymupdf4llm
 from bot.domain.errors import NoTextError
 
 
+# One number, as pdfplumber gives it (digits, commas, a dot, a minus on either side).
+_SINGLE_NUMBER = re.compile(r"\s*-?[\d,]*\d[\d,]*(\.\d+)?-?\s*")
+
+
 @dataclass
 class PageData:
     """One page's readable text and its raw pdfplumber tables (rows of cells)."""
@@ -183,8 +187,25 @@ class PdfDocument:
 
             tables = []
             for page in header_pages:
-                tables.extend(page.extract_tables(self.TABLE_SETTINGS) or [])
+                tables.extend(self._with_blank_lines(page, table)
+                              for table in page.find_tables(self.TABLE_SETTINGS))
         return tables
+
+    @staticmethod
+    def _with_blank_lines(page, table) -> list[list[str | None]]:
+        """table.extract(), but a cell holding a single number keeps the blank line of its מ-/ל- pair:
+        'v\n' when v is printed on the upper (מ-) line, '\nv' on the lower (ל-) line. The text alone
+        can't tell -90,000 → (blank) from (blank) → -90,000; the number's position in the cell can."""
+        rows = table.extract()
+        for cells, row in zip(table.rows, rows):
+            for i, (bbox, text) in enumerate(zip(cells.cells, row)):
+                if bbox is None or not text or not _SINGLE_NUMBER.fullmatch(text):
+                    continue
+                words = page.crop(bbox).extract_words()
+                if words:
+                    upper = (words[0]["top"] + words[0]["bottom"]) / 2 < (bbox[1] + bbox[3]) / 2
+                    row[i] = f"{text}\n" if upper else f"\n{text}"
+        return rows
 
     @classmethod
     def _clean_cell(cls, cell) -> str:
@@ -233,7 +254,10 @@ class PdfDocument:
         return cls._parse_number(text)
 
     def split_stacked_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Split every stacked מ/ל cell ('from\\nto') into <col> from, <col> to and <col> delta (to-from)."""
+        """Split every stacked מ/ל cell ('from\\nto') into <col> from, <col> to and <col> delta (to-from).
+
+        In a column of such pairs, a blank line is 0 ('-90,000\\n' is -90,000 → 0). Elsewhere a single
+        number loses the blank line _with_blank_lines added."""
         columns: dict[str, list] = {}
         for j in range(df.shape[1]):
             series = df.iloc[:, j].astype(str)
@@ -243,21 +267,25 @@ class PdfDocument:
             is_stacked = False
             for value in series:
                 parts = value.split("\n")
+                top = bottom = None
                 if len(parts) == 2:
-                    top = self._parse_number(parts[0])
-                    bottom = self._parse_number(parts[1])
-                    if top is not None and bottom is not None:
-                        parsed.append((top, bottom))
-                        is_stacked = True
-                        continue
-                parsed.append(None)
+                    # cleaned negatives read '90,000-' (minus after the number, as in RTL text)
+                    top, bottom = self._parse_trailing_minus(parts[0]), self._parse_trailing_minus(parts[1])
+                if top is not None and bottom is not None:
+                    is_stacked = True
+                    parsed.append((top, bottom))
+                elif (top is not None and parts[1] == "") or (bottom is not None and parts[0] == ""):
+                    parsed.append((top or 0.0, bottom or 0.0))  # one side printed blank
+                else:
+                    parsed.append(None)
 
             if is_stacked:
                 columns[f"{name} from"] = [p[0] if p else None for p in parsed]
                 columns[f"{name} to"] = [p[1] if p else None for p in parsed]
                 columns[f"{name} delta"] = [p[1] - p[0] if p else None for p in parsed]
             else:
-                columns[name] = series.tolist()
+                columns[name] = [v.strip("\n") if self._parse_trailing_minus(v.strip("\n")) is not None else v
+                                 for v in series]
 
         return pd.DataFrame(columns)
 
