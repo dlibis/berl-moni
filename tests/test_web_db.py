@@ -1,6 +1,3 @@
-import os
-import subprocess
-import sys
 
 import psycopg
 import pytest
@@ -20,9 +17,6 @@ class SessionResponse:
 
 @pytest.fixture
 def migrated_db(test_db_url):
-    env = os.environ.copy()
-    env["TEST_DATABASE_URL"] = test_db_url
-    subprocess.run([sys.executable, "db/migrate.py", "--test"], check=True, env=env)
     return test_db_url
 
 

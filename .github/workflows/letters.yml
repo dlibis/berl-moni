@@ -1,0 +1,45 @@
+name: letters
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: letters
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      due: ${{ steps.due.outputs.due }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - run: uv sync --only-group check --no-install-project
+      - id: due
+        run: uv run --no-sync python common/schedule_due.py >> "$GITHUB_OUTPUT"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  send:
+    needs: check
+    if: needs.check.outputs.due == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-heb
+      - run: uv sync --group bot
+      - run: uv run --no-sync python -m bot.entrypoints.main
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL_NAME: ${{ vars.MODEL_NAME }}
+          MODEL_PROVIDER: ${{ vars.MODEL_PROVIDER }}

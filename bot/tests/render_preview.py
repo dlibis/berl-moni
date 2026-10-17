@@ -1,9 +1,9 @@
 """Fast summary-PDF preview — render straight from a saved golden fixture.
 
-The normal pipeline (bot/main.py) re-parses the 18 MB / 378-page source PDF with
+The normal pipeline (bot/entrypoints/main.py) re-parses the 18 MB / 378-page source PDF with
 pdfplumber and makes an LLM call before it can render — many seconds per run. The
 golden fixtures already hold the extracted `fields` and `table`, so this script skips
-both and renders the summary PDF in ~1s, for eyeballing layout changes in reports.py.
+both and renders the summary PDF in ~1s, for eyeballing layout changes in bot/adapters/summary_pdf/renderer.py.
 
 The letterhead and the 'היסטוריה תקציבית' appendix table are NOT in the golden data —
 they come from the source PDF. We extract them ONCE from the local test_files PDF and
@@ -18,14 +18,16 @@ import os
 import re
 import sys
 
+from pathlib import Path
+
 import pandas as pd
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _ROOT)
-sys.path.insert(0, os.path.join(_ROOT, "bot"))
 
-from reports import Reports  # noqa: E402
-from request_fields import RequestFields  # noqa: E402
+from bot.adapters.summary_pdf.renderer import SummaryPdfRenderer  # noqa: E402
+from bot.domain.extraction import Extraction  # noqa: E402
+from bot.domain.request_fields import RequestFields  # noqa: E402
 
 GOLDEN = os.path.join(os.path.dirname(__file__), "fixtures", "golden")
 TEST_FILES = os.path.join(os.path.dirname(__file__), "test_files")
@@ -54,9 +56,9 @@ def _extras(request: str) -> dict:
     if pdf is None:  # no local PDF -> render without the appendix (still useful)
         return {"letterhead": FALLBACK_LETTERHEAD, "history": None}
 
-    from budget_letter import BudgetLetter
+    from bot.adapters.letter_pdf.loader import open_letter
     print(f"building {request}_extras.json from {os.path.basename(pdf)} (one-time)...")
-    letter = BudgetLetter(pdf)
+    letter = open_letter(pdf)
     extras = {
         "letterhead": letter.extract_letterhead(),
         # budget_history is now a list of (title, DataFrame) pairs — one per metric.
@@ -75,18 +77,21 @@ def render(request: str) -> str:
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     out = os.path.join(OUTPUT_DIR, f"{request}_preview.pdf")
-    return Reports().write_summary(
-        out,
-        # write_summary looks up Hebrew field labels; golden["text"] has the English
-        # attribute names, so rebuild the RequestFields (model_dump by_alias -> Hebrew).
-        fields=RequestFields(**golden["text"]),
+    extraction = Extraction(
+        source=golden.get("source"),
         table=pd.DataFrame(golden["table"]),
+        matched_codes=set(golden.get("master_matched", [])),
+        relevant=True,
+        # golden["text"] has the English attribute names; RequestFields maps them to the Hebrew labels.
+        fields=RequestFields(**golden["text"]),
         letterhead=extras["letterhead"],
-        name_column="name",
         budget_history=budget_history,
-        source_url=golden.get("source"),
-        llm_usage=None,
     )
+    # The fixtures hold no master names, so list the table's own names for its master rows.
+    table = extraction.table
+    in_master = table[table["master"] == "כן"]
+    programs = dict(zip(in_master["number"].astype(str), in_master["name"].astype(str).str.strip()))
+    return str(SummaryPdfRenderer().render(extraction, Path(out), programs))
 
 
 if __name__ == "__main__":

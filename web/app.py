@@ -1,8 +1,12 @@
-from flask import Flask
+from common.env import load_env
 
-from common.config import require
-from web.csrf import register_csrf
-from web.routes import register_routes
+load_env()  # before anything below reads the environment
+
+from flask import Flask  # noqa: E402
+
+from common.config import require  # noqa: E402
+from web.csrf import register_csrf  # noqa: E402
+from web.routes import register_routes  # noqa: E402
 
 require("web")
 app = Flask(__name__)
