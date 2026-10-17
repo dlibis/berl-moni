@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from common.schedule_due import ISRAEL, due_day
+from common.schedule_due import ISRAEL, due_day, resume_requested
 
 SCHEDULE = [{"from": "2026-10-01", "to": "2026-10-31", "days": {
     "wed": {"enabled": True, "time": "09:00"},
@@ -46,3 +46,8 @@ def test_23_00_until_israel_midnight():
 def test_outside_range_or_blocked_by_db():
     assert due_day(at(2026, 11, 4, 12), SCHEDULE, FakeConn()) is None
     assert due_day(at(2026, 10, 14, 12), SCHEDULE, FakeConn(row={"?column?": 1})) is None
+
+
+def test_resume_requested_needs_a_sending_row():
+    assert resume_requested(FakeConn(row={"?column?": 1})) is True
+    assert resume_requested(FakeConn()) is False
