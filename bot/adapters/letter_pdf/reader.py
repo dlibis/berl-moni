@@ -1,20 +1,16 @@
-"""PdfDocument — turn a givven url PDF into clean, uniform data.
+"""PDF reader: PdfDocument reads a letter PDF from disk and gives back clean text and tables.
 
-This module owns everything messy about the PDF itself: 
-downloading/caching a URL,
-opening it, 
-detecting budget-table pages, 
-correcting pdfplumber's right-to-left
-(bidi) text, and reading tables. 
-It knows *nothing* about budgets or request fields.
+This module owns everything messy about the PDF file itself: opening it, correcting pdfplumber's
+right-to-left (bidi) text, reading tables, and OCR for scans. The one thing it knows about budget
+letters is how to spot their table pages (the HEADER line); request fields are not its business.
 
-Its public surface is small and stable, so a consumer (see budget_letter.BudgetLetter)
+Its public surface is small and stable, so a consumer (see letter_pdf.parser.BudgetLetter)
 can rely on it without caring how the PDF was parsed:
 
-    doc = PdfDocument(source)          # source is a URL or a local path
+    doc = PdfDocument(path)            # a local file (letter_pdf.download.local_copy for a URL)
     doc.text        -> str             # every page, bidi-corrected (lines reversed)
     doc.raw_text    -> str             # every page, exactly as pdfplumber emits it
-    doc.pages       -> list[PageData]  # per-page text + raw tables
+    doc.pages       -> list[PageData]  # per-page text + its tables (cells cleaned, not yet typed)
     doc.markdown    -> str             # pymupdf4llm text (OCR for a scan), narrative source
     doc.scanned     -> bool            # True when the PDF has no text layer (OCR'd)
     doc.tables      -> list[DataFrame] # header-page tables, split into from/to/delta
@@ -24,31 +20,14 @@ re-ordering anything themselves.
 """
 from __future__ import annotations
 
-import hashlib
-import logging
 import re
-import tempfile
-import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
 
 import pandas as pd
 import pdfplumber
 import pymupdf4llm
 
-# pdfminer (used by pdfplumber) logs a noisy "Could not get FontBBox" warning for
-# PDFs whose font descriptors omit a FontBBox; it doesn't affect text/table output.
-logging.getLogger("pdfminer").setLevel(logging.ERROR)
-
-
-class ExtractionError(ValueError):
-    """The letter can't be read reliably (missing heading, empty required field, bad arithmetic)."""
-
-
-class NoTextError(ValueError):
-    """No text layer, and OCR found no text either."""
+from bot.domain.errors import NoTextError
 
 
 @dataclass
@@ -56,7 +35,7 @@ class PageData:
     """One page's readable text and its raw pdfplumber tables (rows of cells)."""
 
     text: str
-    tables: list  # list[list[list[str | None]]] — unprocessed, for page-level lookups
+    tables: list  # list[list[list[str | None]]] — cells cleaned, not yet parsed into DataFrames
 
 
 class PdfDocument:
@@ -69,55 +48,14 @@ class PdfDocument:
     # sliver column. Snapping nearby vertical lines together merges them.
     TABLE_SETTINGS = {"snap_x_tolerance": 10}
 
-    def __init__(self, source, *, use_first_row_as_header: bool = True):
-        self.source = source
+    def __init__(self, path: str, *, use_first_row_as_header: bool = True):
+        self.path = path  # a local file; letter_pdf.download.local_copy fetches URLs
         self.use_first_row_as_header = use_first_row_as_header
         self._markdown: str | None = None
         self._scanned: bool | None = None
 
-    # ---- source handling ----
-
-    @staticmethod
-    def _download(url: str, attempts: int = 4) -> bytes:
-        """Download url, retrying with backoff so a transient URLError doesn't abort the run."""
-        last_error: Exception | None = None
-        for attempt in range(attempts):
-            try:
-                with urllib.request.urlopen(url, timeout=30) as response:
-                    return response.read()
-            except (urllib.error.URLError, TimeoutError) as error:
-                last_error = error
-                if attempt < attempts - 1:
-                    time.sleep(2 ** attempt)  # 1s, 2s, 4s
-        raise RuntimeError(f"Failed to download {url} after {attempts} attempts: {last_error}")
-
-    @staticmethod
-    def _as_openable(source):
-        """Return something pdfplumber.open can read.
-
-        pdfplumber.open only accepts local paths or file-like objects, not URLs,
-        so http(s) sources are downloaded once into an on-disk cache (keyed by URL)
-        and reused on later runs — the download is the slow part, not the parsing.
-        """
-        if isinstance(source, str) and source.startswith(("http://", "https://")):
-            cache_dir = Path(tempfile.gettempdir()) / "pdf_key_checker_cache"
-            cache_dir.mkdir(exist_ok=True)
-            cache_file = cache_dir / (hashlib.sha256(source.encode()).hexdigest() + ".pdf")
-            if not cache_file.exists():
-                cache_file.write_bytes(PdfDocument._download(source))
-            return str(cache_file)
-        return source
-
-    def local_path(self) -> str:
-        """Path to the PDF on disk (downloading/caching it first for URL sources).
-
-        Lets callers keep a copy of the original letter alongside the generated
-        output, without re-downloading — it returns the same cached file used for parsing.
-        """
-        return self._as_openable(self.source)
-
     def _open(self):
-        return pdfplumber.open(self._as_openable(self.source))
+        return pdfplumber.open(self.path)
 
     def _is_header_page(self, page) -> bool:
         """True if the page contains HEADER (i.e. a budget-table page).
@@ -176,10 +114,9 @@ class PdfDocument:
         Raises NoTextError when OCR finds nothing.
         """
         if self._markdown is None:
-            path = self._as_openable(self.source)
             if self.scanned:
                 md = pymupdf4llm.to_markdown(
-                    path, force_ocr=True, ocr_language="heb+eng", ocr_dpi=300)
+                    self.path, force_ocr=True, ocr_language="heb+eng", ocr_dpi=300)
                 if not re.search(r"[\w]", md):
                     raise NoTextError("no text layer and OCR found no text")
                 md = "\n".join(
@@ -187,7 +124,7 @@ class PdfDocument:
                     if line.startswith("|") else line
                     for line in md.splitlines())
             else:
-                md = pymupdf4llm.to_markdown(path, use_ocr=False)
+                md = pymupdf4llm.to_markdown(self.path, use_ocr=False)
             self._markdown = md
         return self._markdown
 

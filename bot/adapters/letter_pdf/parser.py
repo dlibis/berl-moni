@@ -1,60 +1,46 @@
-"""BudgetLetter — the document/table provider for a budget-transfer request letter.
+"""Letter parser: BudgetLetter reads a budget-transfer letter's parts out of its PDF — the combined
+budget table, the budget history, the letterhead and the government-decision links.
 
-It takes a PdfDocument (clean text + tables) and exposes the raw materials the single
-extraction agent (agent.py) builds on: the combined budget table, the budget history,
-the letterhead, the decision links, and a cheap relevance gate. It never touches
-pdfplumber or raw PDFs — that is PdfDocument's job. Request-field extraction is NOT
-here; it lives in agent.py.
+It takes a PdfDocument (clean text + tables) and exposes the raw materials the Extractor
+(bot/domain/extraction.py) builds on. It never touches pdfplumber or raw PDFs — that is
+PdfDocument's job. Request-field extraction is NOT here; it lives in bot/domain/extraction.py.
 
-    letter = BudgetLetter(source)                      # URL or local path
+    letter = BudgetLetter(PdfDocument(path), source)   # see letter_pdf.loader.open_letter
     letter.extract_combined_table()                    # -> DataFrame
-    letter.budget_codes()                              # cheap relevance gate, no LLM
 """
 from __future__ import annotations
 
-import logging
 import re
 
-from pdf_document import PdfDocument
-from request_fields import RequestFields
-
-logger = logging.getLogger(__name__)
+from bot.adapters.letter_pdf.reader import PdfDocument
+from bot.domain.extraction import CODE_COLUMN, NAME_COLUMN
 
 
 class BudgetLetter:
     """A budget-transfer request letter, exposed as typed answers."""
 
-    # Field labels come from the typed contract, so the two never drift apart.
-    REQUEST_FIELDS = RequestFields.field_labels()
-
     # Combined-table column names (see extract_combined_table, added in Task 5).
-    CODE_COLUMN = "number"
-    NAME_COLUMN = "name"
+    CODE_COLUMN = CODE_COLUMN  # the table contract lives in the domain (bot/domain/extraction.py)
+    NAME_COLUMN = NAME_COLUMN
     # The budget item name column (שם הפרט), identified by its char-reversed header.
     NAME_SOURCE_HEADER = "שם הפרט"
 
-    # The one field whose value is a list of government-decision URLs.
-    DECISION_LINKS_FIELD = "קישורים להחלטות ממשלה"
-
-    # Font with Hebrew glyphs, used by the generated PDFs (see reports.Reports).
-    HEBREW_FONT_PATH = "/Library/Fonts/Arial Unicode.ttf"
-
     # The appendix table (נספח לדברי ההסבר) listing each program's multi-year
     # net-expenditure history; its page is found by this marker in the readable text.
-    BUDGET_HISTORY_TITLE = "היסטוריה תקציבית של הפנייה - הוצאה נטו"
     BUDGET_HISTORY_GENERIC = "היסטוריה תקציבית של הפנייה"  # when the metric is unknown
     BUDGET_HISTORY_MARKER = "היסטוריה תקציבית"
 
-    def __init__(self, source: str):
-        self.source = source
-        self.doc = PdfDocument(source)
+    def __init__(self, doc: PdfDocument, source: str):
+        self.doc = doc
+        self.source = source  # the URL (or path) the letter came from, printed on the summary
 
-    # ---- combined budget table + relevance gate ----
+    # ---- combined budget table + arithmetic check ----
 
     def extract_combined_table(self):
         """The letter's data tables combined into one clean table.
 
-        Columns: number, from, to, delta, name. Only leaf rows (5-6 digit codes) kept.
+        Columns: number, name, then '<metric> from' / '<metric> to' for each METRIC (see
+        _combine_tables). Only leaf rows (5-6 digit codes) kept.
         A scan has no readable cell structure, so its table is the codes only (number,
         name), taken from the 6-digit cells of the OCR markdown's table rows.
         """
@@ -128,16 +114,6 @@ class BudgetLetter:
         """True if the two lists hold the same amounts, ignoring order."""
         return len(a) == len(b) and all(abs(x - y) < 0.01 for x, y in zip(sorted(a), sorted(b)))
 
-    def budget_codes(self) -> set[str]:
-        """The budget-item codes this letter changes (cheap; no LLM call)."""
-        return set(self.extract_combined_table()[self.CODE_COLUMN])
-
-    def changes_tracked(self, master_ids: set[str]) -> set[str]:
-        """Codes in this letter that are tracked in master; empty means skip the letter."""
-        return self.budget_codes() & master_ids
-
-    # Metric columns of a budget line: (display Hebrew header, raw column prefix in
-    # doc.tables). The report shows each as a מ-/ל- pair with a שינוי (delta) value.
     METRICS = [
         ("הוצאה", "הוצאה"),
         ("הוצאה מותנית", "הוצאה\nמותנית"),
@@ -230,27 +206,9 @@ class BudgetLetter:
             raise ValueError("Could not find a budget item code column.")
         return best_column
 
-    @classmethod
-    def _find_change_column(cls, df, exclude: set):
-        """Return the column of single (non-paired) signed change values, if any."""
-        best_column = None
-        best_score = -1
-        for column in df.columns:
-            if column in exclude:
-                continue
-            values = df[column].astype("string").fillna("").str.strip()
-            score = sum(
-                1 for v in values
-                if v and "\n" not in v and PdfDocument._parse_number(v) is not None
-            )
-            if score > best_score:
-                best_score = score
-                best_column = column
-        return best_column if best_score > 0 else None
-
     # ---- decision links, budget history, letterhead ----
 
-    def _decision_links(self) -> list[str]:
+    def decision_links(self) -> list[str]:
         """Return the government-decision URLs (קישורים להחלטות ממשלה), one per decision.
 
         URLs are read from the raw page text (not the bidi-reversed text) so they read

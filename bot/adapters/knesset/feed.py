@@ -1,14 +1,14 @@
+"""Knesset feed client: fetch_letter_urls() lists the PDF URLs of the budget-transfer requests pending
+in the Finance Committee (requestStatus 2), reading every page of the feed. Raises FeedUnreachable."""
 from math import ceil
 
 from requests import RequestException, post
 
+from bot.domain.errors import FeedUnreachable
+
 FEED_URL = "https://www.knesset.gov.il/WebSiteApi/knessetapi/CommitteeReports/GetCommitteePortalsBudget"
 PAGE_SIZE = 10
 PAGE_TIMEOUT = 30
-
-
-class FeedUnreachable(Exception):
-    pass
 
 
 def _get_page(page_num):
@@ -32,7 +32,7 @@ def _get_page(page_num):
     return rows
 
 
-def get_pdf_urls():
+def fetch_letter_urls():
     first_page = _get_page(1)
     if not first_page:
         return []

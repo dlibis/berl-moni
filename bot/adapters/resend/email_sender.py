@@ -1,4 +1,5 @@
-"""Send one email through Resend (https://resend.com/docs/api-reference/emails/send-email).
+"""Resend email sender: send_email() sends one email with PDF attachments through the Resend API
+(https://resend.com/docs/api-reference/emails/send-email).
 
 RESEND_API_KEY comes from the environment. The caller writes email_log; this module touches no
 database and logs counts only. Errors carry the HTTP status and Resend's error name, never an address.
@@ -9,22 +10,14 @@ import os
 
 import requests
 
+from bot.domain.errors import ResendError
+
 logger = logging.getLogger(__name__)
 
 RESEND_EMAILS_URL = "https://api.resend.com/emails"
 
 
-class ResendError(RuntimeError):
-    """A failed send. `status` is the HTTP status (None if no response); the message holds only the
-    Resend error name or the exception class."""
-
-    def __init__(self, status: int | None, name: str):
-        super().__init__(f"Resend {status}: {name}" if status else f"Resend: {name}")
-        self.status = status
-        self.name = name
-
-
-def send_message(*, from_address: str, reply_to: str, bcc: list[str],
+def send_email(*, from_address: str, reply_to: str, bcc: list[str],
                  attachments: list[tuple[str, bytes]], subject: str, html: str,
                  idempotency_key: str) -> None:
     """POST one message to Resend; `to` is the Reply-to inbox, the mailing list goes in `bcc`."""

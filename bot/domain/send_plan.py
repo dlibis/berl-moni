@@ -4,7 +4,11 @@ Pure functions. No database, no network.
 """
 import math
 
+# Resend rejects an email over 40 MB including its attachments after Base64 encoding; 35 MB of
+# encoded PDFs leaves room for the body and the MIME headers.
 MAX_BATCH_BYTES = 35 * 1024 * 1024
+# Resend takes at most 50 addresses per message: the reply-to inbox in `to`, so 49 in `bcc`.
+# Must equal common.limits.CHUNK, which the web screens use for the same arithmetic.
 CHUNK_SIZE = 49
 
 
@@ -43,11 +47,15 @@ def emails_needed(n_batches, chunks):
     return n_batches * sum(len(c) + 1 for c in chunks)
 
 
+def within_budget(needed, sent_today, sent_month, daily_limit, reserve, monthly_limit):
+    """True if `needed` more emails fit today's usable budget and this month's."""
+    return needed + sent_today <= daily_limit - reserve and needed + sent_month <= monthly_limit
+
+
 def fit_budget(batches, chunks, sent_today, sent_month, daily_limit, reserve, monthly_limit):
     """Keep the oldest batches that fit both budgets. Returns [] when none fits."""
     for kept in range(len(batches), -1, -1):
-        needed = emails_needed(kept, chunks)
-        if needed + sent_today <= daily_limit - reserve and needed + sent_month <= monthly_limit:
+        if within_budget(emails_needed(kept, chunks), sent_today, sent_month, daily_limit, reserve, monthly_limit):
             return batches[:kept]
     return []
 

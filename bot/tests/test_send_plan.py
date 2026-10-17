@@ -1,9 +1,5 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import send_plan  # noqa: E402
+from bot.domain import send_plan
 
 MB = 1024 * 1024
 # 22.5 MB raw encodes to exactly 30 MB, so two of them cannot share a 35 MB batch
@@ -62,3 +58,8 @@ def test_nothing_fits_returns_empty():
 
 def test_idempotency_key_format():
     assert send_plan.idempotency_key(7, 2, 1) == "run7-b2-c1"
+
+
+def test_chunk_size_matches_the_web_screens():
+    from common.limits import CHUNK
+    assert send_plan.CHUNK_SIZE == CHUNK

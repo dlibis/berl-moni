@@ -35,7 +35,7 @@ jobs:
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-heb
       - run: uv sync --group bot
-      - run: uv run --no-sync python bot/main.py
+      - run: uv run --no-sync python -m bot.entrypoints.main
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}

@@ -1,44 +1,36 @@
-"""FR-7 — golden tests over a real letter, driven by the single Agent.
+"""FR-7 — golden tests over a real letter, driven by the single Extractor.
 
-The offline test exercises the Agent's deterministic tools on the saved raw text (no
-network/LLM). The end-to-end test runs the whole Agent (incl. the one coalition LLM
+The offline test exercises the Extractor's deterministic tools on the saved raw text (no
+network/LLM). The end-to-end test runs the whole Extractor (incl. the one coalition LLM
 call) on 21658's local PDF; it skips without an API key for the configured provider (there is no deterministic
 fallback for coalition_funds).
 """
 import os
-import sys
 
 import pytest
 
-# Project root importable so `common` resolves (mirrors bot/main.py).
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, _ROOT)
-sys.path.insert(0, os.path.join(_ROOT, "bot"))
-from common.env import load_env  # noqa: E402
+from common.env import load_env
 
 load_env()
 
-from common.config_manager import ConfigManager  # noqa: E402
+from bot import bootstrap  # noqa: E402
+from common.config import llm_settings  # noqa: E402
 from common.db import connect, load_programs  # noqa: E402
-from agent import Agent, MASTER_COLUMN  # noqa: E402
+from bot.domain.extraction import Extractor, MASTER_COLUMN  # noqa: E402
 
 PDF_21658 = os.path.join(_ROOT, "bot", "tests", "test_files", "21658_original.pdf")
 RAW_21658 = os.path.join(os.path.dirname(__file__), "fixtures", "golden", "21658_raw.txt")
 
 
-def _agent(test_db_url) -> Agent:
-    """The Agent as the app builds it (model/key from env), with programs from the test DB."""
-    with connect(test_db_url) as conn:
+def _extractor(neon_test_db_url) -> Extractor:
+    """The Extractor as the app builds it (model/key from env), with programs from the test DB."""
+    with connect(neon_test_db_url) as conn:
         programs = load_programs(conn)
-    return Agent(
-        programs,
-        api_key=ConfigManager.get_api_key(),
-        model=ConfigManager.get_model_name(),
-        provider=ConfigManager.get_model_provider(),
-    )
+    return bootstrap.extractor(programs)
 
 
-_HAS_KEY = bool(ConfigManager.get_api_key())
+_HAS_KEY = bool(llm_settings()["api_key"])
 
 
 @pytest.mark.skipif(not os.path.isfile(RAW_21658), reason="21658 raw text not present")
@@ -47,7 +39,7 @@ def test_program_number_includes_programs_from_summary_and_breakdown():
     # summary and only detailed in the breakdown — it must still appear. Deterministic,
     # so no LLM/network.
     raw = open(RAW_21658, encoding="utf-8").read()
-    codes = [c.strip() for c in Agent._program_number(Agent._narrative_region(raw)).split(",")]
+    codes = [c.strip() for c in Extractor._program_number(Extractor._narrative_region(raw)).split(",")]
     for code in ("231039", "230120", "231038", "230723", "230242", "230243",
                  "231175", "231165", "231202", "230722", "231203"):
         assert code in codes, f"{code} missing from program_number ({codes})"
@@ -55,9 +47,9 @@ def test_program_number_includes_programs_from_summary_and_breakdown():
 
 @pytest.mark.skipif(not (os.path.isfile(PDF_21658) and _HAS_KEY),
                     reason="21658 PDF or LLM API key (configured provider) not present")
-def test_agent_extract_21658(test_db_url):
-    """The whole Agent — deterministic fields + the one coalition LLM call + master."""
-    result = _agent(test_db_url).extract(PDF_21658)
+def test_extractor_21658(neon_test_db_url):
+    """The whole Extractor — deterministic fields + the one coalition LLM call + master."""
+    result = _extractor(neon_test_db_url).extract(PDF_21658)
 
     # deterministic fields
     assert result.fields.date == "01/07/2026"

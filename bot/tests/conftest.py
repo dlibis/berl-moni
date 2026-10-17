@@ -1,6 +1,3 @@
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-from tests.conftest import test_db_url  # noqa: E402,F401  (shared fixture)
+# The shared fixtures live in the repository-level tests/conftest.py (the `tests` package at the root),
+# not in this file: pytest only auto-loads a conftest from a test file's own directory and its parents.
+from tests.conftest import neon_test_db_url, test_db_url  # noqa: F401
