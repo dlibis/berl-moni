@@ -15,6 +15,8 @@ can rely on it without caring how the PDF was parsed:
     doc.text        -> str             # every page, bidi-corrected (lines reversed)
     doc.raw_text    -> str             # every page, exactly as pdfplumber emits it
     doc.pages       -> list[PageData]  # per-page text + raw tables
+    doc.markdown    -> str             # pymupdf4llm text (OCR for a scan), narrative source
+    doc.scanned     -> bool            # True when the PDF has no text layer (OCR'd)
     doc.tables      -> list[DataFrame] # header-page tables, split into from/to/delta
 
 Number direction is normalized here too, so consumers get correct digits without
@@ -34,10 +36,19 @@ from pathlib import Path
 
 import pandas as pd
 import pdfplumber
+import pymupdf4llm
 
 # pdfminer (used by pdfplumber) logs a noisy "Could not get FontBBox" warning for
 # PDFs whose font descriptors omit a FontBBox; it doesn't affect text/table output.
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
+
+class ExtractionError(ValueError):
+    """The letter can't be read reliably (missing heading, empty required field, bad arithmetic)."""
+
+
+class NoTextError(ValueError):
+    """No text layer, and OCR found no text either."""
 
 
 @dataclass
@@ -61,6 +72,8 @@ class PdfDocument:
     def __init__(self, source, *, use_first_row_as_header: bool = True):
         self.source = source
         self.use_first_row_as_header = use_first_row_as_header
+        self._markdown: str | None = None
+        self._scanned: bool | None = None
 
     # ---- source handling ----
 
@@ -147,8 +160,45 @@ class PdfDocument:
     # ---- text ----
 
     @property
+    def scanned(self) -> bool:
+        """True when no page has a text layer (the letter is a scan and goes through OCR)."""
+        if self._scanned is None:
+            with self._open() as pdf:
+                self._scanned = not any((page.extract_text() or "").strip() for page in pdf.pages)
+        return self._scanned
+
+    @property
+    def markdown(self) -> str:
+        """The letter's text via pymupdf4llm: its text layer, or Tesseract OCR for a scan.
+
+        OCR (heb+eng, 300 dpi) keeps digits exact but reverses word order per line and puts
+        the minus sign after the number (66,970-); table-row minus signs are moved in front.
+        Raises NoTextError when OCR finds nothing.
+        """
+        if self._markdown is None:
+            path = self._as_openable(self.source)
+            if self.scanned:
+                md = pymupdf4llm.to_markdown(
+                    path, force_ocr=True, ocr_language="heb+eng", ocr_dpi=300)
+                if not re.search(r"[\w]", md):
+                    raise NoTextError("no text layer and OCR found no text")
+                md = "\n".join(
+                    re.sub(r"(?<![\w,.-])(\d[\d,]*(?:\.\d+)?)-(?!\w)", r"-\1", line)
+                    if line.startswith("|") else line
+                    for line in md.splitlines())
+            else:
+                md = pymupdf4llm.to_markdown(path, use_ocr=False)
+            self._markdown = md
+        return self._markdown
+
+    @property
     def text(self) -> str:
-        """Every page's text in correct reading order (Hebrew and numbers both fixed)."""
+        """Every page's text in correct reading order (Hebrew and numbers both fixed).
+
+        A scan has no text layer, so its text is the OCR markdown.
+        """
+        if self.scanned:
+            return self.markdown
         with self._open() as pdf:
             return "\n".join(
                 "\n".join(self._fix_line(line) for line in (page.extract_text() or "").splitlines())
@@ -235,6 +285,15 @@ class PdfDocument:
         if re.fullmatch(r"-?\d+(\.\d+)?", cleaned):
             return float(cleaned)
         return None
+
+    @classmethod
+    def _parse_trailing_minus(cls, text: str) -> float | None:
+        """Like _parse_number, but also reads a trailing minus ('10,850-') as negative."""
+        text = text.strip()
+        if text.endswith("-"):
+            value = cls._parse_number(text[:-1])
+            return -value if value is not None else None
+        return cls._parse_number(text)
 
     def split_stacked_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Split every stacked מ/ל cell ('from\\nto') into <col> from, <col> to and <col> delta (to-from)."""

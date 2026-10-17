@@ -1,18 +1,12 @@
 import os
-from pathlib import Path
-
-from dotenv import find_dotenv
 
 from common.env import load_env
 
-# Where gmail_auth writes GOOGLE_REFRESH_TOKEN: the nearest .env up the tree, else the project root.
-# Loading .env files happens in common.env.
-ENV_PATH = Path(find_dotenv() or Path(__file__).resolve().parent.parent / ".env")
 load_env()
 
 
 class ConfigManager:
-    """Environment-only settings for the bot and Gmail helpers.
+    """Environment-only settings for the bot.
 
     Everything else (programs, mailing list, schedule, addresses) lives in Neon; see common.db.
     Model settings and secrets come from the environment (loaded from the project-root .env):
@@ -20,10 +14,6 @@ class ConfigManager:
       MODEL_PROVIDER        -> get_model_provider()  (openai / google_genai; unset = openai)
       OPENAI_API_KEY        -> get_api_key()  (provider openai / unset)
       GEMINI_API_KEY        -> get_api_key()  (provider google_genai)
-      MONI_SENDER           -> get_notifier_email()
-      GOOGLE_CLIENT_ID      -> get_google_client_id()
-      GOOGLE_CLIENT_SECRET  -> get_google_client_secret()
-      GOOGLE_REFRESH_TOKEN  -> get_google_refresh_token()
     """
 
     API_KEY_ENV_BY_PROVIDER = {
@@ -44,23 +34,3 @@ class ConfigManager:
         """The LLM key for the configured provider. Unknown/unset provider -> OpenAI."""
         provider = ConfigManager.get_model_provider() or "openai"
         return os.environ.get(ConfigManager.API_KEY_ENV_BY_PROVIDER.get(provider, "OPENAI_API_KEY")) or None
-
-    @staticmethod
-    def get_notifier_email() -> str | None:
-        """Sending Gmail address, from MONI_SENDER in the environment / .env only."""
-        return os.environ.get("MONI_SENDER") or None
-
-    @staticmethod
-    def get_google_client_id() -> str | None:
-        """OAuth client id from the Google Cloud Console (GOOGLE_CLIENT_ID)."""
-        return os.environ.get("GOOGLE_CLIENT_ID") or None
-
-    @staticmethod
-    def get_google_client_secret() -> str | None:
-        """OAuth client secret from the Google Cloud Console (GOOGLE_CLIENT_SECRET)."""
-        return os.environ.get("GOOGLE_CLIENT_SECRET") or None
-
-    @staticmethod
-    def get_google_refresh_token() -> str | None:
-        """Refresh token written by bot/gmail_auth.py (GOOGLE_REFRESH_TOKEN)."""
-        return os.environ.get("GOOGLE_REFRESH_TOKEN") or None

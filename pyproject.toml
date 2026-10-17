@@ -17,8 +17,6 @@ check = [
     "psycopg[binary]>=3.3.6",
 ]
 bot = [
-    "google-api-python-client>=2.200.0",
-    "google-auth-oauthlib>=1.4.1",
     "langchain>=1.3.12",
     "langchain-google-genai>=4.4.0",
     "langchain-ollama>=1.1.0",

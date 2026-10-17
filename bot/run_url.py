@@ -18,7 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agent
 from common.config_manager import ConfigManager
 from common.db import load_programs
-from main import OUTPUT_DIR, email_reports, render_summary
+from main import OUTPUT_DIR, render_summary
+from notifier import ResendError
+from send_test_mail import send_test
 from utils_function import _slug
 
 
@@ -51,7 +53,14 @@ if __name__ == "__main__":
     print(f"relevant={result.relevant}  master-matches={len(result.matched_codes)}  "
           f"coalition={result.fields.coalition_funds!r}")
     print("summary PDF:", rendered[0] if rendered else "(none rendered)")
-    if args.to:
-        sent = email_reports(ConfigManager.get_notifier_email(), args.to,
-                             [rendered] if rendered else [])
-        print("emailed to:", ", ".join(args.to) if sent else "(nothing sent)")
+    if args.to and rendered:
+        path, name = rendered
+        with open(path, "rb") as f:
+            pdf = f.read()
+        try:
+            send_test(args.to, [(f"{name}.pdf", pdf)])
+            print(f"emailed to {len(args.to)} recipient(s)")
+        except ResendError as e:
+            print(f"send failed: {e}")
+    elif args.to:
+        print("(nothing sent)")

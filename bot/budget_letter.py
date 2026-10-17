@@ -55,8 +55,78 @@ class BudgetLetter:
         """The letter's data tables combined into one clean table.
 
         Columns: number, from, to, delta, name. Only leaf rows (5-6 digit codes) kept.
+        A scan has no readable cell structure, so its table is the codes only (number,
+        name), taken from the 6-digit cells of the OCR markdown's table rows.
         """
+        if self.doc.scanned:
+            return self._scan_table()
         return self._combine_tables(self.doc.tables)
+
+    def _scan_table(self):
+        """Codes from the 6-digit cells of the OCR markdown's table rows — never from
+        free text, where any 6-digit number (phone, amount) would give false matches."""
+        import pandas as pd
+
+        codes: list[str] = []
+        for line in self.doc.markdown.splitlines():
+            if not line.startswith("|"):
+                continue
+            for cell in line.strip("|").split("|"):
+                codes += [c for c in (p.strip() for p in cell.split("<br>"))
+                          if re.fullmatch(r"\d{6}", c)]
+        return pd.DataFrame({self.CODE_COLUMN: list(dict.fromkeys(codes)),
+                             self.NAME_COLUMN: ""})
+
+    def arithmetic_failures(self) -> list[str]:
+        """Codes of kept rows whose change amounts disagree with to - from.
+
+        The change values sit in the unlabelled columns before the first metric column;
+        each row's non-zero changes must equal its non-zero (to - from) values. A row with
+        an unreadable change cell can't be verified and is not reported.
+        """
+        if self.doc.scanned:
+            return []  # ponytail: OCR tables have no cell structure to check
+        import pandas as pd
+
+        data_tables = [
+            df for df in self.doc.tables if any(str(c).endswith("delta") for c in df.columns)
+        ]
+        combined = pd.concat(data_tables, ignore_index=True)
+        code_column = self._find_code_column(combined)
+        combined = combined[
+            combined[code_column].astype(str).str.strip().str.fullmatch(r"\d{5,6}")]
+        prefixes = [prefix for _, prefix in self.METRICS]
+        columns = list(combined.columns)
+        first_metric = next(
+            (i for i, c in enumerate(columns) if any(str(c).startswith(p) for p in prefixes)),
+            0)
+        change_columns = columns[:first_metric]
+
+        bad = []
+        for _, row in combined.iterrows():
+            deltas = []
+            for prefix in prefixes:
+                lo, hi = row.get(f"{prefix} from"), row.get(f"{prefix} to")
+                if pd.notna(lo) and pd.notna(hi) and abs(hi - lo) > 1e-6:
+                    deltas.append(hi - lo)
+            changes, readable = [], True
+            for column in change_columns:
+                cell = str(row[column]).strip().strip("\n")
+                if cell in ("", "nan"):
+                    continue
+                value = PdfDocument._parse_trailing_minus(cell)
+                if value is None:
+                    readable = False
+                elif abs(value) > 1e-6:
+                    changes.append(value)
+            if readable and not self._same_amounts(deltas, changes):
+                bad.append(str(row[code_column]).strip().zfill(6))
+        return bad
+
+    @staticmethod
+    def _same_amounts(a: list[float], b: list[float]) -> bool:
+        """True if the two lists hold the same amounts, ignoring order."""
+        return len(a) == len(b) and all(abs(x - y) < 0.01 for x, y in zip(sorted(a), sorted(b)))
 
     def budget_codes(self) -> set[str]:
         """The budget-item codes this letter changes (cheap; no LLM call)."""
@@ -312,6 +382,8 @@ class BudgetLetter:
         a lone trailing Hebrew letter is re-joined before returning.
         """
         header_lines = []
+        if self.doc.scanned:  # OCR'd lines are unreliable; the letterhead is the same on every letter
+            return ["מדינת ישראל", PdfDocument.HEADER][:lines]
         for line in self.doc.text.splitlines():
             cleaned = re.sub(r"(\S) ([֐-ת])(?=\s|$)", r"\1\2", line.strip())
             if re.search(r"[֐-ת]", cleaned):

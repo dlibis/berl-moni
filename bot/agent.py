@@ -27,6 +27,7 @@ from budget_letter import BudgetLetter
 from common.config_manager import ConfigManager
 from common.env import load_env
 from common.db import load_programs
+from pdf_document import ExtractionError
 from request_fields import RequestFields
 
 # Load OPENAI_API_KEY from .env even when imported standalone.
@@ -78,6 +79,8 @@ class Extraction:
     relevant: bool             # a summary is produced iff this is True
     letter: BudgetLetter       # kept for rendering (letterhead, history, original PDF)
     llm_usage: dict | None = None   # token counts + cost of the one coalition call
+    scanned: bool = False      # OCR'd letter: the PDF is marked "מכתב סרוק — יש לאמת מול המקור"
+    arithmetic_ok: bool = True  # False: a table row's from + change != to (scans only)
 
 
 class Agent:
@@ -118,9 +121,23 @@ class Agent:
     def extract(self, source: str) -> Extraction:
         """Extract one letter (URL or local path) into fields + table + relevance."""
         letter = BudgetLetter(source)
-        text = letter.doc.text
+        scanned = letter.doc.scanned
 
-        region = self._narrative_region(text)
+        # Relevance first: an irrelevant letter makes no model call and no field checks.
+        table, matched = self._table(letter)
+        if not matched:
+            return Extraction(RequestFields(), table, matched, False, letter, None, scanned)
+
+        bad_rows = letter.arithmetic_failures()
+        if bad_rows and not scanned:
+            raise ExtractionError(f"from + change != to in rows: {', '.join(bad_rows)}")
+
+        # Narrative from the pymupdf4llm text; the labelled fields (date, numbers) read
+        # better from the line-corrected text, except in a scan, which only has the OCR.
+        region = self._narrative_region(letter.doc.markdown)
+        if not region:
+            raise ExtractionError("heading 'עיקרי הפנייה' not found or has no text")
+        text = letter.doc.text
         # The ONE LLM call: coalition judgment + the full request text (not a summary).
         coalition, summary, usage = self._analyze(region)
         fields = RequestFields(
@@ -132,22 +149,32 @@ class Agent:
             staffing_changes=self._staffing(text),
             coalition_funds=coalition,
         )
+        # A scan's date / request number may be unreadable (flagged "verify"); a text
+        # letter must have every required field.
+        required = {"request_summary": fields.request_summary}
+        if not scanned:
+            required |= {"date": fields.date, "request_number": fields.request_number}
+        empty = [name for name, value in required.items() if not value.strip()]
+        if empty:
+            raise ExtractionError(f"empty required field: {', '.join(empty)}")
 
-        table, matched = self._table(letter)
-        return Extraction(fields, table, matched, bool(matched), letter, usage)
+        return Extraction(fields, table, matched, True, letter, usage, scanned, not bad_rows)
 
     # --------------------------------------------------- deterministic tools
     @staticmethod
     def _date(text: str) -> str:
-        """The request date from the table pages ("תאריך הבקשה: DD/MM/YYYY")."""
-        m = re.search(r"תאריך הבקשה\s*:?\s*(\d{1,4}[./]\d{1,2}[./]\d{2,4})", text)
+        """The request date from the table pages ("תאריך הבקשה: DD/MM/YYYY"; OCR puts the
+        date first and the words in reverse order)."""
+        m = (re.search(r"תאריך הבקשה\s*:?\s*(\d{1,4}[./]\d{1,2}[./]\d{2,4})", text)
+             or re.search(r"(\d{1,4}[./]\d{1,2}[./]\d{2,4})\s*הבקשה\s*:?\s*תאריך", text))
         return m.group(1) if m else ""
 
     def _request_number(self, text: str) -> str:
         """The 'בקשה מספר NN-NNN' numbers + the committee number, canonicalized."""
         numbers = list(dict.fromkeys(
             m.replace(" ", "")
-            for m in re.findall(r"בקשה מספר\s*(\d{2,3}\s*-\s*\d{2,3})", text)
+            for m in (re.findall(r"בקשה מספר\s*(\d{2,3}\s*-\s*\d{2,3})", text)
+                      or re.findall(r"(\d{2,3}-\d{2,3})\s*מספר\s*בקשה", text))  # OCR order
         ))
         committee = re.search(r"מספר פני\S* לועדה\s*:?\s*([^\n]+)", text)
         parts = []
@@ -161,8 +188,10 @@ class Agent:
     def _narrative_region(text: str) -> str:
         """The narrative text (verbatim), from AFTER 'עיקרי הפנייה:' up to the budget-table
         pages — a bounded window the LLM inspects for the exact end boundary. The heading
-        itself is excluded (the report's field label supplies it), so it isn't doubled."""
-        m = re.search(r"עיקרי הפנייה\s*:", text)
+        itself is excluded (the report's field label supplies it), so it isn't doubled.
+        Both spellings (הפניה / הפנייה) and, for OCR, either word order are accepted;
+        "" when there is no heading."""
+        m = re.search(r"עיקרי\s*הפניי?ה\s*:?|הפניי?ה\s*:\s*עיקרי", text)
         if not m:
             return ""
         # The table pages begin at 'תאריך הבקשה'; the narrative ends before them.

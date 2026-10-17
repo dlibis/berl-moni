@@ -185,7 +185,8 @@ class Reports:
                       letterhead: list[str], name_column: str,
                       budget_history=None,
                       source_url: str | None = None, llm_usage: dict | None = None,
-                      relevant_programs: dict | None = None) -> str:
+                      relevant_programs: dict | None = None,
+                      scanned: bool = False) -> str:
         """Render the request fields and combined budget table into one A4 PDF.
 
         `fields` is the {field: value} dict, `table` the combined-table DataFrame,
@@ -193,6 +194,7 @@ class Reports:
         `budget_history` is a list of (title, DataFrame) pairs — the letter's
         'היסטוריה תקציבית' appendix tables, one per metric — each rendered under its
         title below the budget table (see BudgetLetter.extract_budget_history).
+        `scanned` (an OCR'd letter) adds a "verify against the original" line under the letterhead.
         `method` only tags the filename (summary.pdf -> summary_parse.pdf / _llm.pdf).
         `source_url`, if given, is printed as the PDF's provenance line.
         `llm_usage` (from BudgetLetter.last_llm_usage) prints the LLM token cost of the
@@ -239,6 +241,8 @@ class Reports:
         story = []
         for header in letterhead:
             story.append(Paragraph(escape(self._rtl(header)), title_style))
+        if scanned:
+            story.append(Paragraph(escape(self._rtl("מכתב סרוק — יש לאמת מול המקור")), title_style))
         story.append(Spacer(1, 0.5 * cm))
 
         # ---- in-master programs, at the top, right under the letterhead ----
