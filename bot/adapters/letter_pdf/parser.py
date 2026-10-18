@@ -10,7 +10,9 @@ PdfDocument's job. Request-field extraction is NOT here; it lives in bot/domain/
 """
 from __future__ import annotations
 
+import hashlib
 import re
+from pathlib import Path
 
 from bot.adapters.letter_pdf.reader import PdfDocument
 from bot.adapters.letter_pdf.tables import to_table
@@ -34,6 +36,18 @@ class BudgetLetter:
     def __init__(self, doc: PdfDocument, source: str):
         self.doc = doc
         self.source = source  # the URL (or path) the letter came from, printed on the summary
+        candidate = Path(doc.path) if doc is not None else None
+        path = candidate if candidate is not None and candidate.is_file() else None
+        self.source_size = path.stat().st_size if path is not None else 0
+        self.source_sha256 = self._sha256(path) if path is not None else ""
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     # ---- combined budget table + arithmetic check ----
 
