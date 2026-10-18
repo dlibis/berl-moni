@@ -10,7 +10,12 @@ from bot.adapters.github.dispatch import dispatch_workflow
 from bot.domain.versions import analysis_version
 from bot.tests.fixtures.extractions import complete_extraction
 from web.auth import require_session
+from bot.domain.errors import FeedUnreachable
+from bot.service_layer.services import Ports
+from bot.service_layer.unit_of_work import UnitOfWork
+from common.db import set_setting
 from web.csrf import register_csrf
+from web.routes.status import status_bp
 from web.routes.letters import letters_bp
 
 
@@ -30,14 +35,17 @@ def db(test_db_url):
 
 
 @pytest.fixture
-def client(db, monkeypatch):
+def client(db, test_db_url, monkeypatch):
     monkeypatch.setenv("SITE_ORIGIN", "https://berl.site")
     monkeypatch.setenv("NEON_AUTH_BASE_URL", "https://auth.example")
     monkeypatch.setattr("web.auth.requests.get", lambda *args, **kwargs: SessionResponse())
     monkeypatch.setattr("web.routes.letters.connect", db)
+    monkeypatch.setattr("web.routes.status.connect", db)
+    monkeypatch.setattr("web.bootstrap.uow", lambda: UnitOfWork(test_db_url))
     app = Flask(__name__)
     register_csrf(app)
     app.register_blueprint(letters_bp)
+    app.register_blueprint(status_bp)
 
     @app.get("/test/user")
     @require_session
@@ -121,3 +129,84 @@ def test_session_user_reaches_g(client):
 
 def test_dispatch_without_token_is_false():
     assert dispatch_workflow(None, "dlibis/berl-moni") is False
+
+
+ORIGIN = {"Origin": "https://berl.site"}
+
+
+@pytest.fixture
+def fake_ports(db, monkeypatch):
+    with db() as conn:
+        conn.execute("DELETE FROM email_log")
+        conn.execute("DELETE FROM send_runs")
+        conn.execute("DELETE FROM mailing_list")
+        conn.execute("INSERT INTO mailing_list (email) VALUES ('m@x.org')")
+        set_setting(conn, "from_address", "moni@berl.site")
+        set_setting(conn, "reply_to_address", "r@x.org")
+    sent = []
+    monkeypatch.setattr("web.bootstrap.ports", lambda: Ports(
+        feed=None, extractor=None, render=lambda extraction, programs: b"%PDF-1.7 fake",
+        send_email=lambda **kwargs: sent.append(kwargs) or f"id{len(sent)}", save_copy=None))
+    return sent
+
+
+def test_analyze_queues_and_reports_dispatch_failure(client, discovered, monkeypatch):
+    monkeypatch.setattr("web.bootstrap.dispatch", lambda: False)
+    r = client.post(f"/api/v1/letters/{discovered}/analyze", json={}, headers=ORIGIN)
+    assert r.status_code == 202 and r.get_json() == {"status": "queued", "dispatch_failed": True}
+    assert client.post(f"/api/v1/letters/{discovered}/analyze", json={}, headers=ORIGIN).status_code == 409
+
+
+def test_analyze_done_and_unknown(client, analyzed_relevant, monkeypatch):
+    monkeypatch.setattr("web.bootstrap.dispatch", lambda: True)
+    r = client.post(f"/api/v1/letters/{analyzed_relevant}/analyze", json={}, headers=ORIGIN)
+    assert (r.status_code, r.get_json()) == (200, {"status": "done"})
+    r = client.post(f"/api/v1/letters/{analyzed_relevant}/reanalyze", json={}, headers=ORIGIN)
+    assert (r.status_code, r.get_json()) == (202, {"status": "queued", "dispatch_failed": False})
+    assert client.post("/api/v1/letters/nope/analyze", json={}, headers=ORIGIN).status_code == 404
+
+
+def test_send_confirm_flow(client, analyzed_relevant, fake_ports):
+    assert client.post(f"/api/v1/letters/{analyzed_relevant}/send", json={}, headers=ORIGIN).status_code == 200
+    r = client.post(f"/api/v1/letters/{analyzed_relevant}/send", json={}, headers=ORIGIN)
+    assert (r.status_code, r.get_json()["error"]) == (409, "confirm_resend")
+    assert client.post(f"/api/v1/letters/{analyzed_relevant}/send", json={"resend": True}, headers=ORIGIN).status_code == 200
+    assert len(fake_ports) == 2
+
+
+def test_send_refusals(client, discovered, fake_ports):
+    r = client.post(f"/api/v1/letters/{discovered}/send", json={}, headers=ORIGIN)
+    assert (r.status_code, r.get_json()) == (409, {"error": "not_sendable"})
+    assert client.post("/api/v1/letters/nope/send", json={}, headers=ORIGIN).status_code == 404
+
+
+def test_refresh_counts_and_auto_since(client, monkeypatch):
+    from bot.domain.feed import FeedLetter
+    monkeypatch.setattr("web.bootstrap.ports", lambda: Ports(
+        feed=lambda: [FeedLetter("https://example.test/f.pdf", date(2026, 1, 1), "m", ("1",), ())],
+        extractor=None, render=None, send_email=None, save_copy=None))
+    r = client.post("/api/v1/letters/refresh", json={}, headers=ORIGIN)
+    assert (r.status_code, r.get_json()) == (200, {"new": 1, "seen": 0})
+    r = client.post("/api/v1/letters/refresh", json={}, headers=ORIGIN)
+    assert r.get_json() == {"new": 0, "seen": 1}
+
+
+def test_refresh_feed_down_is_502(client, monkeypatch):
+    def down():
+        raise FeedUnreachable("page 1")
+    monkeypatch.setattr("web.bootstrap.ports", lambda: Ports(
+        feed=down, extractor=None, render=None, send_email=None, save_copy=None))
+    r = client.post("/api/v1/letters/refresh", json={}, headers=ORIGIN)
+    assert (r.status_code, r.get_json()) == (502, {"error": "feed_unreachable"})
+
+
+def test_post_without_origin_is_rejected(client, discovered):
+    assert client.post(f"/api/v1/letters/{discovered}/analyze", json={}).status_code == 403
+
+
+def test_retry_route_is_gone(client):
+    assert client.post("/api/v1/letters/x/retry", json={}, headers=ORIGIN).status_code == 404
+
+
+def test_status_has_no_failed_letters(client):
+    assert "failed_letters" not in client.get("/api/v1/status").get_json()
