@@ -2,6 +2,8 @@
 and attachment batches while it is `sending`, and why it stopped if it `failed`."""
 from psycopg.types.json import Jsonb
 
+from bot.domain.statuses import SendKind
+
 
 class SendRunsRepository:
     def __init__(self, conn):
@@ -13,11 +15,16 @@ class SendRunsRepository:
                                  "ORDER BY id DESC LIMIT 1").fetchone()
 
     def start(self, day, from_address: str, reply_to_address: str, recipients: list[str],
-              batches: list[list[str]]) -> int:
+              batches: list[list[str]], kind: SendKind = "auto", requested_by: str | None = None) -> int:
         return self.conn.execute(
-            "INSERT INTO send_runs (day, status, from_address, reply_to_address, recipients, batches) "
-            "VALUES (%s, 'sending', %s, %s, %s, %s) RETURNING id",
-            (day, from_address, reply_to_address, Jsonb(recipients), Jsonb(batches))).fetchone()["id"]
+            "INSERT INTO send_runs "
+            "(day, status, from_address, reply_to_address, recipients, batches, kind, requested_by) "
+            "VALUES (%s, 'sending', %s, %s, %s, %s, %s, %s) RETURNING id",
+            (day, from_address, reply_to_address, Jsonb(recipients), Jsonb(batches), kind,
+             requested_by)).fetchone()["id"]
+
+    def lock_budget(self) -> None:
+        self.conn.execute("SELECT pg_advisory_xact_lock(hashtext('letters-send'))")
 
     def lock(self, run_id: int) -> str | None:
         """Re-read the run FOR UPDATE and return its status (None if it does not exist)."""

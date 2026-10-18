@@ -43,6 +43,12 @@ class LettersRepository:
             "SELECT letter_url, summary_pdf FROM letters WHERE letter_url = ANY(%s)", (list(urls),))}
         return [rows[u] for u in urls]
 
+    def load_extractions(self, urls) -> list[dict | None]:
+        """Saved extraction JSON in the order of `urls`."""
+        rows = {r["letter_url"]: r["extraction"] for r in self.conn.execute(
+            "SELECT letter_url, extraction FROM letters WHERE letter_url = ANY(%s)", (list(urls),))}
+        return [rows.get(u) for u in urls]
+
     def mark_failed(self, url: str, reason: LetterReason) -> None:
         """Take a letter out of the send set (e.g. a PDF over the batch limit)."""
         self.conn.execute("UPDATE letters SET status = 'failed', reason = %s, summary_pdf = NULL, pdf_bytes = NULL "
@@ -52,3 +58,7 @@ class LettersRepository:
         """The pending letters among `urls` -> sent by run `run_id`."""
         self.conn.execute("UPDATE letters SET status = 'sent', sent_at = now(), send_run_id = %s "
                           "WHERE status = 'pending' AND letter_url = ANY(%s)", (run_id, list(urls)))
+
+    def mark_delivered(self, urls: list[str]) -> None:
+        self.conn.execute("UPDATE letters SET last_sent_at = now(), send_count = send_count + 1 "
+                          "WHERE letter_url = ANY(%s)", (urls,))

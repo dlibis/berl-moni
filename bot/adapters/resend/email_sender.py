@@ -19,7 +19,7 @@ RESEND_EMAILS_URL = "https://api.resend.com/emails"
 
 def send_email(*, from_address: str, reply_to: str, bcc: list[str],
                  attachments: list[tuple[str, bytes]], subject: str, html: str,
-                 idempotency_key: str) -> None:
+                 idempotency_key: str) -> str:
     """POST one message to Resend; `to` is the Reply-to inbox, the mailing list goes in `bcc`."""
     try:
         response = requests.post(
@@ -41,3 +41,4 @@ def send_email(*, from_address: str, reply_to: str, bcc: list[str],
             name = "unknown"
         raise ResendError(response.status_code, name)
     logger.info("sent %d PDFs in 1 message", len(attachments))
+    return str(response.json()["id"])
