@@ -98,8 +98,11 @@ def test_scan_rows_have_counts_only(conn):
 
 @pytest.mark.parametrize("constraint, literal", [
     ("letters_status_check", "LetterStatus"), ("letters_reason_check", "LetterReason"),
+    ("letters_analysis_status_check", "AnalysisStatus"),
     ("send_runs_status_check", "RunStatus"), ("scans_status_check", "ScanStatus"),
+    ("send_runs_kind_check", "SendKind"),
     ("scans_reason_check", "ScanReason"), ("email_log_kind_check", "EmailKind"),
+    ("email_log_status_check", "EmailStatus"),
 ])
 def test_status_types_match_the_check_constraints(conn, constraint, literal):
     import re
