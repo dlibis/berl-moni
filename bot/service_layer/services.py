@@ -13,6 +13,7 @@ import re
 import urllib.error
 import uuid
 from dataclasses import dataclass, field
+from functools import partial
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, NamedTuple, Protocol, TypedDict
@@ -155,9 +156,11 @@ def settings_problem(uow, from_address: str, reply_to: str, recipients: list[str
     return None
 
 
-def finish_scan(uow, day, status: ScanStatus, reason: ScanReason | None = None, **counts) -> int:
-    """Write this run's one `scans` row and commit. Exit code: non-zero iff the scan failed."""
-    uow.scans.add(day, status, reason, **counts)
+def finish_scan(uow, day, status: ScanStatus, reason: ScanReason | None = None, record: bool = True,
+                **counts) -> int:
+    """Write this run's one `scans` row (unless `record` is off) and commit. Exit code: non-zero iff the scan failed."""
+    if record:
+        uow.scans.add(day, status, reason, **counts)
     uow.commit()
     logger.info("scan %s%s: %s", status, f" ({reason})" if reason else "",
                 ", ".join(f"{k}={v}" for k, v in counts.items()))
@@ -177,9 +180,12 @@ def attachments(uow, ports: Ports, urls: list[str]) -> list[tuple[str, bytes]]:
     return files
 
 
-def deliver(uow, ports: Ports, run: SendRun, day, stats: ScanCounts, reason: ScanReason | None = None) -> int:
-    """Steps 11-12: send every (batch, chunk) message not yet in email_log, then finish the run."""
+def deliver(uow, ports: Ports, run: SendRun, day, stats: ScanCounts, reason: ScanReason | None = None,
+            record_scan: bool = True) -> int:
+    """Steps 11-12: send every (batch, chunk) message not yet in email_log, then finish the run.
+    A manual send passes `record_scan=False`: it is not a scan."""
     run_id = run["id"]
+    finish = partial(finish_scan, record=record_scan)
     chunks = plan.chunks(run["recipients"])
     done = uow.email_log.sent_keys(run_id)
     emails = messages = 0
@@ -192,7 +198,7 @@ def deliver(uow, ports: Ports, run: SendRun, day, stats: ScanCounts, reason: Sca
             if uow.send_runs.lock(run_id) != "sending":  # a person abandoned the run: write nothing more
                 uow.rollback()
                 logger.info("run %d is no longer sending, stopped", run_id)
-                return finish_scan(uow, day, "nothing_new", reason, emails_sent=emails, **stats)
+                return finish(uow, day, "nothing_new", reason, emails_sent=emails, **stats)
             files = files or attachments(uow, ports, urls)
             uow.email_log.start(key, "letter", len(bcc) + 1)
             uow.commit()
@@ -204,19 +210,19 @@ def deliver(uow, ports: Ports, run: SendRun, day, stats: ScanCounts, reason: Sca
                 name = error.name if isinstance(error, ResendError) else type(error).__name__
                 logger.error("run %d: send failed (HTTP %s, %s)", run_id, getattr(error, "status", None), name)
                 uow.send_runs.mark_failed(run_id, name)
-                return finish_scan(uow, day, "failed", "resend_error", emails_sent=emails, **stats)
+                return finish(uow, day, "failed", "resend_error", emails_sent=emails, **stats)
             uow.email_log.complete(key, resend_email_id)
             uow.commit()
             emails += len(bcc) + 1
             messages += 1
     if not uow.send_runs.finish(run_id):
         uow.rollback()
-        return finish_scan(uow, day, "nothing_new", reason, emails_sent=emails, **stats)
+        return finish(uow, day, "nothing_new", reason, emails_sent=emails, **stats)
     delivered = [url for urls in run["batches"] for url in urls]
     uow.letters.mark_delivered(delivered)
     uow.letters.mark_sent(delivered, run_id)  # legacy rows during the expand/contract migration
     logger.info("run %d: sent %d messages", run_id, messages)
-    return finish_scan(uow, day, "sent", reason, emails_sent=emails, **stats)
+    return finish(uow, day, "sent", reason, emails_sent=emails, **stats)
 
 
 def resume_run(uow, ports: Ports, run: dict, today) -> int:
