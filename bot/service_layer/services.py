@@ -126,9 +126,12 @@ def scan_letter(extractor: LetterExtractor, render, url: str, programs: dict[str
         logger.info("%s: not relevant (no code in master), skipped", slug)
         return Scan("irrelevant")
     usage = result.llm_usage
-    if usage:  # what the one model call cost, for whoever watches the job's log
-        logger.info("%s: %s used %d input + %d output tokens", slug, usage["model"],
-                    usage["input_tokens"], usage["output_tokens"])
+    if usage:  # what the model calls cost and whether the self-review corrected the draft
+        logger.info("%s: %s used %d input (%d cached) + %d output tokens in %d calls",
+                    slug, usage["model"], usage["input_tokens"], usage.get("cached_tokens", 0),
+                    usage["output_tokens"], usage.get("calls", 1))
+        if usage.get("corrected"):
+            logger.info("%s: self-review corrected the draft: %s", slug, "; ".join(usage["review_problems"]))
     try:
         path = render(result, out_dir / f"{slug}_summary.pdf", result.named_matches(programs))
         return Scan("pending", pdf=path.read_bytes())

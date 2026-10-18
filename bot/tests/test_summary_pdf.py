@@ -6,9 +6,11 @@ import pandas as pd
 import pymupdf
 
 from bot.adapters.summary_pdf.hebrew_text import rtl, wrap_rtl_html
-from bot.adapters.summary_pdf.renderer import FONT, SummaryPdfRenderer, budget_table_rows
+from bot.adapters.summary_pdf.money_flow import fold, hubs, transfer_summary
+from bot.adapters.summary_pdf.renderer import SummaryPdfRenderer, budget_table_rows
+from bot.adapters.summary_pdf.theme import FONT
 from bot.domain.extraction import Extraction
-from bot.domain.request_fields import RequestFields
+from bot.domain.request_fields import ProgramUses, RequestFields, Use
 
 GOLDEN = Path(__file__).parent / "fixtures" / "golden"
 
@@ -33,9 +35,9 @@ def test_render_real_summary_pdf(tmp_path):
     output = SummaryPdfRenderer().render(extraction, tmp_path / "21656_summary.pdf", programs)
 
     with pymupdf.open(output) as document:
-        text = "".join(page.get_text() for page in document)
+        links = [link.get("uri") for page in document for link in page.get_links()]
         assert document.page_count >= 1
-    assert golden["source"] in text
+    assert golden["source"] in links
 
 
 def test_budget_table_rows_has_header_two_rows_per_item_and_spans():
@@ -67,3 +69,54 @@ def test_wrap_rtl_html_wraps_long_text_and_bolds_change_purpose_label():
 
     assert html.count("<br/>") >= 2
     assert f"<b>{rtl('מטרת השינוי:')}</b>" in html
+
+
+def test_transfer_summary_nets_each_item_and_drops_pass_through():
+    table = pd.DataFrame([
+        {"number": "470102", "name": "רזרבה", "הוצאה from": -90, "הוצאה to": 0, "master": "לא"},
+        {"number": "121101", "name": "גמלאות", "הוצאה from": 500, "הוצאה to": 410, "master": "לא"},
+        {"number": "470102", "name": "רזרבה", "הוצאה from": 90, "הוצאה to": 0, "master": "לא"},
+        {"number": "231039", "name": "שירותים", "הוצאה from": 100, "הוצאה to": 190, "master": "כן"},
+    ])
+
+    sources, destinations, metric = transfer_summary(table)
+
+    assert metric == "הוצאה"
+    assert sources == [("121101", "גמלאות", 90)]
+    assert destinations == [("231039", "שירותים", 90)]
+
+
+def test_hubs_split_sources_into_reserve_and_internal_transfer():
+    table = pd.DataFrame([{"number": "470102", "name": "תוכנית מעבר - רזרבה כללית"}])
+    sources = [("230721", "חוץ ביתי", 115), ("544003", "החלטות ממשלה", 100), ("121101", "גמלאות", 90)]
+    destinations = [("231039", "שירותים", 205), ("230120", "משרד", 100)]
+
+    assert hubs(sources, destinations, table) == [
+        ("רזרבה כללית", [("544003", "החלטות ממשלה", 100), ("121101", "גמלאות", 90)]),
+        ("העברה פנימית", [("230721", "חוץ ביתי", 115)]),
+    ]
+
+
+def test_fold_keeps_five_and_never_folds_a_single_item():
+    items = [(str(i), "x", 10 - i) for i in range(8)]
+    assert fold(items) == (items[:5], items[5:])
+    assert fold(items[:6]) == (items[:6], [])
+
+
+def test_why_table_shows_each_use_and_tags_coalition_money(tmp_path):
+    table = pd.DataFrame([
+        {"number": "230120", "name": "שירותי משרד מרכזיים", "הוצאה from": 100, "הוצאה to": 200, "master": "לא"},
+        {"number": "230721", "name": "חוץ ביתי", "הוצאה from": 300, "הוצאה to": 200, "master": "כן"},
+    ])
+    fields = RequestFields(total_amount="100", programs=[ProgramUses(code="230120", uses=[
+        Use(text="הפעלה שוטפת של המיזם לביטחון תזונתי"),
+        Use(text="הרחבת מבחן התמיכה בארגונים", coalition=True)])])
+    extraction = Extraction(source="https://example.org/x.pdf", table=table, matched_codes={"230721"},
+                            relevant=True, fields=fields)
+
+    output = SummaryPdfRenderer().render(extraction, tmp_path / "s.pdf", {"230721": "חוץ ביתי"})
+
+    with pymupdf.open(output) as document:
+        text = "".join(page.get_text() for page in document)
+    for words in ("הפעלה שוטפת", "ביטחון תזונתי", "קואליציוני", "העברה פנימית"):
+        assert rtl(words) in text or words in text, words

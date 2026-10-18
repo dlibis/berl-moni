@@ -3,8 +3,8 @@
 `Extractor` owns ALL request-field extraction for a budget-transfer letter. Most fields are
 produced by deterministic methods over the FULL letter text (no truncation). One call to
 `analyze` (bot.adapters.llm.letter_analyzer.LlmAnalyzer in production, a lambda in tests) over the narrative region
-does the two things that vary per letter: judging `coalition_funds` and returning the
-request text VERBATIM. No deterministic fallback. `load(source)` returns the letter
+does the two things that vary per letter: judging `coalition_funds` and saying, per program,
+what the request's money is for. No deterministic fallback. `load(source)` returns the letter
 (bot.adapters.letter_pdf.loader.open_letter in production): its text, tables and links. The
 Extractor reads no environment, no database and no PDF library itself: bot.bootstrap builds it.
 
@@ -24,7 +24,7 @@ from typing import Callable, Protocol
 import pandas as pd
 
 from bot.domain.errors import ExtractionError
-from bot.domain.request_fields import RequestFields
+from bot.domain.request_fields import PROGRAM_HEADING, ProgramUses, RequestFields
 
 # The budget table's columns: code, name, '<metric> from' / '<metric> to' per metric, then master.
 CODE_COLUMN = "number"
@@ -35,8 +35,8 @@ MASTER_COLUMN = "master"   # 'כן' if the code is in the master set, else 'לא
 # the heading: an upper bound that keeps a long letter out of the prompt, not a measured narrative length.
 NARRATIVE_MAX_CHARS = 16_000
 
-# region -> (coalition 'כן'/'לא', the request text verbatim, token usage dict)
-Analyze = Callable[[str], "tuple[str, str, dict | None]"]
+# region -> (coalition 'כן'/'לא'/'אולי', what each program's money is for, token usage dict)
+Analyze = Callable[[str], "tuple[str, list[ProgramUses], dict | None]"]
 
 
 class LetterText(Protocol):
@@ -114,23 +114,24 @@ class Extractor:
         if not region:
             raise ExtractionError("heading 'עיקרי הפנייה' not found or has no text")
         text = letter.doc.text
-        # The ONE LLM call: coalition judgment + the full request text (not a summary).
-        coalition, summary, usage = self.analyze(region)
+        # The ONE LLM call: coalition judgment + what each program's money is for.
+        coalition, programs, usage = self.analyze(region)
         fields = RequestFields(
             date=self._date(text),
             request_number=self._request_number(text),
-            program_number=self._program_number(summary),
-            request_summary=summary,
+            program_number=self._program_number(region),
+            total_amount=self._total_amount(region),
+            programs=programs,
             decision_links=self._decision_links(letter),
             staffing_changes=self._staffing(text),
             coalition_funds=coalition,
         )
         # A scan's date / request number may be unreadable (flagged "verify"); a text
         # letter must have every required field.
-        required = {"request_summary": fields.request_summary}
-        if not scanned:
-            required |= {"date": fields.date, "request_number": fields.request_number}
+        required = {} if scanned else {"date": fields.date, "request_number": fields.request_number}
         empty = [name for name, value in required.items() if not value.strip()]
+        if not fields.programs:
+            empty.append("programs")
         if empty:
             raise ExtractionError(f"empty required field: {', '.join(empty)}")
 
@@ -178,10 +179,19 @@ class Extractor:
         return text[m.end():end].strip()
 
     @staticmethod
+    def _total_amount(region: str) -> str:
+        """The request's total as the opening sentence prints it ('... סך של 190,709 אלפי ש"ח'), in
+        thousands of ₪; "" when the letter states none."""
+        m = re.search(r"סך של\s*([\d,]+)\s*אלפי", region)
+        return m.group(1) if m else ""
+
+    @staticmethod
     def _program_number(scope: str) -> str:
-        """Program codes named as 'NNNNNN:' in the given text, in order, de-duplicated."""
-        codes = re.findall(r"תו?כנית\s*:?\s*(\d{5,6})", scope)
-        codes += re.findall(r"(?m)^\s*(\d{5,6})\s*:", scope)
+        """Program codes headed 'NNNNNN:' or 'תכנית NNNNNN -' (21547) in the given text, in the order
+        they appear, de-duplicated. The colon or dash is what makes a heading: a bare
+        'תוכנית NNNNNN' at a line's end also opens the committee's questions after the narrative."""
+        heading = rf"{PROGRAM_HEADING}|תו?כנית\s*(\d{{5,6}})\s+[-–]"
+        codes = [m.group(1) or m.group(2) for m in re.finditer(heading, scope)]
         return ", ".join(dict.fromkeys(codes))
 
     @staticmethod

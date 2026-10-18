@@ -186,8 +186,11 @@ non-flaky; the LLM's reasoning is reserved for fuzzy fields.
 
 ## 6. Non-Functional Requirements (performance)
 
-- **NFR-1 — one LLM call, never twice.** At most a single LLM request per letter, with
-  **no validation/retry round-trip**. "Don't send it twice."
+- **NFR-1 — a draft and one self-review, never more.** *(Revised 2026-10-18; was "one LLM
+  call, never twice".)* The model drafts the answer, then reviews it against the letter and the
+  rules in a second call, which may replace the draft **once** — there is no second correction.
+  The review call starts with the draft call's exact prompt (rules, then the letter), so Gemini's
+  implicit prompt cache serves that prefix. Problems the review fixed are logged per letter.
 - **NFR-2 — minimal payload.** The LLM receives only the **located snippet** the
   judgment needs (e.g. the coalition-funds paragraph found by a deterministic locator),
   never the full or truncated document. Small input = fast + cheap.

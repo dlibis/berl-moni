@@ -45,6 +45,15 @@ def test_program_number_includes_programs_from_summary_and_breakdown():
         assert code in codes, f"{code} missing from program_number ({codes})"
 
 
+def test_program_number_and_total_survive_a_one_line_narrative():
+    # A heading may share its line with the text before it; nothing may depend on line breaks.
+    one_line = ('עיקרי הפנייה: הפנייה נועדה לתקצוב סך של 190,709 אלפי ש"ח בהוצאה. להלן: '
+                '231039: שירותים קהילתיים – 139,917 אלפי ש"ח. 230120: שירותי משרד מרכזיים – 104,678.')
+    region = Extractor._narrative_region(one_line)
+    assert Extractor._program_number(region) == "231039, 230120"
+    assert Extractor._total_amount(region) == "190,709"
+
+
 @pytest.mark.skipif(not (os.path.isfile(PDF_21658) and _HAS_KEY),
                     reason="21658 PDF or LLM API key (configured provider) not present")
 def test_extractor_21658(neon_test_db_url):
@@ -57,6 +66,14 @@ def test_extractor_21658(neon_test_db_url):
     assert "231039" in result.fields.program_number
     # the one LLM call
     assert result.fields.coalition_funds == "כן"
+    assert result.fields.total_amount == "190,709"
+    # uses come from 'מטרת השינוי' only: 230120's description is office upkeep (rent, cars), but
+    # this request's money is for food security, part of it coalition-funded
+    office = " ".join(u.text for u in result.fields.uses("230120"))
+    assert "תזונתי" in office and "רכב" not in office and "שכר דירה" not in office
+    assert any(u.coalition for u in result.fields.uses("230120"))
+    # decisions are named by topic, never by number
+    assert not any(n in u.text for p in result.fields.programs for u in p.uses for n in ("550", "1279", "3315"))
 
     # relevance (FR-5): 10 master matches -> relevant
     assert result.relevant is True

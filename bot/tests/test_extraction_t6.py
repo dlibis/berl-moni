@@ -11,6 +11,7 @@ from bot.adapters.letter_pdf.loader import open_letter
 from bot.adapters.letter_pdf.reader import PdfDocument
 from bot.domain.errors import ExtractionError, NoTextError
 from bot.domain.extraction import Extractor
+from bot.domain.request_fields import ProgramUses, Use
 
 FILES = Path(__file__).parent / "test_files"
 MASTER = {"384001", "045211", "045110", "045203", "045212", "045213", "046303", "046401"}
@@ -21,7 +22,7 @@ CALLS = []  # every region the fake model was asked about, reset per test by `ca
 
 def fake_analyze(region):
     CALLS.append(region)
-    return "לא", "סיכום", None
+    return "לא", [ProgramUses(code="000001", uses=[Use(text="סיכום")])], None
 
 
 @pytest.fixture
@@ -51,7 +52,7 @@ def test_heading_variants_found_with_narrative(calls, name):
     result = _extract(name)
     assert result.relevant and not result.scanned
     assert len(calls) == 1 and calls[0].strip()
-    assert result.fields.request_summary == "סיכום"
+    assert result.fields.uses("000001")[0].text == "סיכום"
 
 
 @pytest.mark.parametrize("name", [
