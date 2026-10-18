@@ -17,7 +17,7 @@ load_env()
 from bot import bootstrap  # noqa: E402
 from common.config import llm_settings  # noqa: E402
 from common.db import connect, load_programs  # noqa: E402
-from bot.domain.extraction import Extractor, MASTER_COLUMN  # noqa: E402
+from bot.domain.extraction import Extractor  # noqa: E402
 
 PDF_21658 = os.path.join(_ROOT, "bot", "tests", "test_files", "21658_original.pdf")
 RAW_21658 = os.path.join(os.path.dirname(__file__), "fixtures", "golden", "21658_raw.txt")
@@ -58,7 +58,8 @@ def test_program_number_and_total_survive_a_one_line_narrative():
                     reason="21658 PDF or LLM API key (configured provider) not present")
 def test_extractor_21658(neon_test_db_url):
     """The whole Extractor — deterministic fields + the one coalition LLM call + master."""
-    result = _extractor(neon_test_db_url).extract(PDF_21658)
+    extractor = _extractor(neon_test_db_url)
+    result = extractor.extract(PDF_21658)
 
     # deterministic fields
     assert result.fields.date == "01/07/2026"
@@ -76,11 +77,10 @@ def test_extractor_21658(neon_test_db_url):
     assert not any(n in u.text for p in result.fields.programs for u in p.uses for n in ("550", "1279", "3315"))
 
     # relevance (FR-5): 10 master matches -> relevant
-    assert result.relevant is True
-    assert len(result.matched_codes) == 10
+    master = extractor.master
+    assert result.relevant_to(master) is True
+    assert len(result.matched(master)) == 10
 
-    # master column (FR-6): כן/לא per row, correct for a known match and non-match
-    assert MASTER_COLUMN in result.table.columns
-    by_code = dict(zip(result.table["number"], result.table[MASTER_COLUMN]))
-    assert by_code.get("231039") == "כן"   # in master
-    assert by_code.get("470102") == "לא"   # not in master
+    # master membership (FR-6), correct for a known match and non-match
+    assert "231039" in result.matched(master)       # in master
+    assert "470102" in result.codes() - master      # not in master

@@ -10,9 +10,11 @@ see a file (with only its budget table: an irrelevant letter's fields are never 
 """
 import argparse
 import sys
+from dataclasses import replace
 
 from bot import bootstrap
 from bot.adapters.summary_pdf.renderer import SummaryPdfRenderer
+from bot.domain.request_fields import RequestFields
 from bot.domain.slug import letter_slug
 from bot.entrypoints.main import OUTPUT_DIR
 from bot.service_layer import services
@@ -28,20 +30,24 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 
 def run(source: str):
-    """Extract one letter and render its summary PDF; return (summary path, extraction)."""
+    """Extract one letter and render its summary PDF; return (summary path, extraction, master matches)."""
     with UnitOfWork() as uow:
         programs = uow.programs()
+    # an irrelevant letter's fields are never read: render it with empty ones
     result = bootstrap.extractor(programs).extract(source)
+    result = replace(result, fields=result.fields or RequestFields())
+    matches = result.named_matches(programs)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUTPUT_DIR / f"{letter_slug(source)}_summary.pdf"
-    return SummaryPdfRenderer().render(result, path, result.named_matches(programs)), result
+    path.write_bytes(SummaryPdfRenderer().render(result, matches))
+    return path, result, matches
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
     bootstrap.setup()
-    path, result = run(args.source)
-    print(f"relevant={result.relevant}  master-matches={len(result.matched_codes)}  "
+    path, result, matches = run(args.source)
+    print(f"relevant={bool(matches)}  master-matches={len(matches)}  "
           f"coalition={result.fields.coalition_funds!r}")
     print("summary PDF:", path)
     if not args.to:

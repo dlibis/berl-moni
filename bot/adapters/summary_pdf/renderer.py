@@ -1,5 +1,6 @@
-"""Summary PDF renderer: SummaryPdfRenderer().render(extraction, path, programs) lays out one relevant
-letter's summary as an A4 PDF. It only draws what the Extraction holds; it never reads the letter.
+"""Summary PDF renderer: SummaryPdfRenderer().render(extraction, programs) lays out one relevant
+letter's summary as an A4 PDF and returns its bytes. It only draws what the Extraction holds; it never
+reads the letter.
 
 Built to be read at a glance: the bottom line first, a picture of the money, the reasons in short
 bullets, and every raw figure in an appendix. The pages, top to bottom (one method each):
@@ -12,10 +13,9 @@ bullets, and every raw figure in an appendix. The pages, top to bottom (one meth
 
 Hebrew must be reordered before reportlab draws it (see hebrew_text.py).
 """
-from pathlib import Path
+from io import BytesIO
 from xml.sax.saxutils import escape
 
-import pandas as pd
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
@@ -27,11 +27,12 @@ from reportlab.platypus import (CondPageBreak, PageBreak, Paragraph, SimpleDocTe
 
 from bot.adapters.summary_pdf.flow_chart import flow_chart
 from bot.adapters.summary_pdf.hebrew_text import fix_split_words, rtl, wrap_rtl_html
-from bot.adapters.summary_pdf.money_flow import INTERNAL_HUB, Item, fold, hubs, transfer_summary
 from bot.adapters.summary_pdf.theme import (COALITION_ORANGE, FONT, FONT_PATH, HEAD_TINT, INK,
                                             MASTER_BLUE, MUTED, RULE, UNIT, money)
-from bot.domain.extraction import CODE_COLUMN, MASTER_COLUMN, NAME_COLUMN, Extraction
+from bot.domain.extraction import CODE_COLUMN, NAME_COLUMN, Extraction
+from bot.domain.money_flow import INTERNAL_HUB, Item, fold, hubs, transfer_summary
 from bot.domain.request_fields import RequestFields
+from bot.domain.table import Table as DataTable
 
 MARGIN = 1.5 * cm                       # on every side of the page
 CONTENT_WIDTH = A4[0] - 2 * MARGIN
@@ -58,9 +59,9 @@ class SummaryPdfRenderer:
     def __init__(self):
         pdfmetrics.registerFont(TTFont(FONT, str(FONT_PATH)))
 
-    def render(self, extraction: Extraction, output_path: Path, programs: dict[str, str]) -> Path:
-        """Write the summary PDF; `programs` is {code: master name} for the programs that made the
-        letter relevant. Returns `output_path`; raises on failure."""
+    def render(self, extraction: Extraction, programs: dict[str, str]) -> bytes:
+        """The summary PDF; `programs` is {code: master name} for the programs that make the
+        letter relevant. Raises on failure."""
         e = extraction
         master = set(programs)
         sources, destinations, _ = transfer_summary(e.table)
@@ -69,10 +70,11 @@ class SummaryPdfRenderer:
                  + self._summary_box(e.fields, e.source, groups, len(master), e.table)
                  + self._flow_chart(groups, destinations, master)
                  + self._why_table(e.fields, sources, destinations, master)
-                 + self._appendix(e))
-        SimpleDocTemplate(str(output_path), pagesize=A4, topMargin=MARGIN, bottomMargin=MARGIN,
+                 + self._appendix(e, master))
+        pdf = BytesIO()
+        SimpleDocTemplate(pdf, pagesize=A4, topMargin=MARGIN, bottomMargin=MARGIN,
                           leftMargin=MARGIN, rightMargin=MARGIN).build(story)
-        return Path(output_path)
+        return pdf.getvalue()
 
     # ---- page 1: the bottom line and the picture ------------------------------
 
@@ -85,14 +87,14 @@ class SummaryPdfRenderer:
         return flow + [Spacer(1, 0.3 * cm)]
 
     def _summary_box(self, fields: RequestFields, source: str | None, groups, master_count: int,
-                     table: pd.DataFrame) -> list:
+                     table: DataTable) -> list:
         """Label | value rows: what a reader needs before anything else."""
         internal = sum(a for name, items in groups if name == INTERNAL_HUB for _, _, a in items)
         numbers, *rest = [part.strip() for part in fields.request_number.split("|")]
         rows = [("סך הפנייה", f"{fields.total_amount} {UNIT}" if fields.total_amount else ""),
                 ("העברה פנימית במשרד", money(internal) if internal else ""),
                 ("כספים קואליציוניים", fields.coalition_funds),
-                ("תוכניות מהמאסטר", f"{master_count} מתוך {table[CODE_COLUMN].nunique()}"),
+                ("תוכניות מהמאסטר", f"{master_count} מתוך {len(set(table.column(CODE_COLUMN)))}"),
                 ("מס' פנייה", numbers)]
         rows += [tuple(part.split(":", 1)) for part in rest if ":" in part]   # 'מספר פנייה לועדה: 65 עד 70'
         rows.append(("תאריך", fields.date))
@@ -162,9 +164,9 @@ class SummaryPdfRenderer:
 
     # ---- the appendix: every figure, for checking -----------------------------
 
-    def _appendix(self, e: Extraction) -> list:
+    def _appendix(self, e: Extraction, master: set[str]) -> list:
         flow = [PageBreak(), _paragraph("נספח: הנתונים המלאים", H1), Spacer(1, 0.3 * cm)]
-        flow += self._budget_table(e.table) + self._budget_history(e.budget_history)
+        flow += self._budget_table(e.table, master) + self._budget_history(e.budget_history)
         links = [url for url in e.fields.decision_links.split("\n") if url.strip()]
         if links:
             flow += [Spacer(1, 0.5 * cm), _paragraph("קישורים להחלטות ממשלה", H2)]
@@ -173,8 +175,8 @@ class SummaryPdfRenderer:
             flow += [Spacer(1, 0.3 * cm), _paragraph(f"שינויים בכוח אדם: {e.fields.staffing_changes}", BODY)]
         return flow
 
-    def _budget_table(self, table: pd.DataFrame) -> list:
-        rows, spans = budget_table_rows(table)
+    def _budget_table(self, table: DataTable, master: set[str]) -> list:
+        rows, spans = budget_table_rows(table, master)
         display = [row[::-1] for row in rows]  # right-to-left: the first column is drawn rightmost
         width = len(rows[0])
         mirrored = [("SPAN", (width - 1 - col, top), (width - 1 - col, bottom)) for col, top, bottom in spans]
@@ -187,9 +189,9 @@ class SummaryPdfRenderer:
         for title, history in history_tables:
             if history is None or history.empty:
                 continue
-            columns = list(history.columns)[::-1]  # right-to-left: the first column is drawn rightmost
-            rows = [[_header_cell(column) for column in columns]]
-            rows += [[str(record[column]) for column in columns] for _, record in history.iterrows()]
+            # right-to-left: the first column is drawn rightmost
+            rows = [[_header_cell(column) for column in history.columns[::-1]]]
+            rows += [[str(cell) for cell in row[::-1]] for row in history.rows]
             flow += [Spacer(1, 0.6 * cm), _paragraph(title, TITLE), Spacer(1, 0.2 * cm), _grid_table(rows)]
         return flow
 
@@ -226,20 +228,21 @@ def _rows_style() -> TableStyle:
 
 # ---- the budget table's content (no drawing) ----------------------------------
 
-def budget_table_rows(table: pd.DataFrame) -> tuple[list[list[str]], list[tuple[int, int, int]]]:
+def budget_table_rows(table: DataTable, master: set[str]) -> tuple[list[list[str]], list[tuple[int, int, int]]]:
     """The budget table as the letter prints it, in logical (left-to-right) column order:
     a header, then two rows per item — מ- with the 'from' amounts, ל- with the 'to' amounts.
-    The code, the name, שינוי (the first metric's change) and master span both rows; `spans`
-    lists them as (column, top row, bottom row). Amounts are formatted, Hebrew is reordered."""
+    The code, the name, שינוי (the first metric's change) and master (כן if the code is in `master`)
+    span both rows; `spans` lists them as (column, top row, bottom row). Amounts are formatted,
+    Hebrew is reordered."""
     metrics = [c.removesuffix(" from") for c in table.columns if str(c).endswith(" from")]
     header = ["מספר פרט", "שם הפרט", ""] + metrics + ["שינוי", "master"]
     last = len(header) - 1
     rows, spans = [[rtl(h) for h in header]], []
-    for _, item in table.iterrows():
+    for item in table.records():
         top = len(rows)
         rows.append([str(item[CODE_COLUMN]), rtl(item[NAME_COLUMN]), rtl("מ-")]
                     + [_amount(item.get(f"{m} from")) for m in metrics]
-                    + [_change(item, metrics), rtl(item.get(MASTER_COLUMN, ""))])
+                    + [_change(item, metrics), rtl("כן" if item[CODE_COLUMN] in master else "לא")])
         rows.append(["", "", rtl("ל-")] + [_amount(item.get(f"{m} to")) for m in metrics] + ["", ""])
         spans += [(col, top, top + 1) for col in (0, 1, last - 1, last)]
     return rows, spans
@@ -249,14 +252,14 @@ def _change(item, metrics: list[str]) -> str:
     """'to' minus 'from' for the first metric that has both, formatted; '' if none does."""
     for m in metrics:
         before, after = item.get(f"{m} from"), item.get(f"{m} to")
-        if pd.notna(before) and pd.notna(after):
+        if before is not None and after is not None:
             return _amount(float(after) - float(before))
     return ""
 
 
 def _amount(value) -> str:
     try:
-        return f"{float(value):,.0f}" if pd.notna(value) else ""
+        return f"{float(value):,.0f}" if value is not None else ""
     except (TypeError, ValueError):
         return ""
 
