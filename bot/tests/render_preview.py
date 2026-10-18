@@ -20,14 +20,13 @@ import sys
 
 from pathlib import Path
 
-import pandas as pd
-
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _ROOT)
 
 from bot.adapters.summary_pdf.renderer import SummaryPdfRenderer  # noqa: E402
 from bot.domain.extraction import Extraction  # noqa: E402
 from bot.domain.request_fields import RequestFields  # noqa: E402
+from bot.domain.table import Table  # noqa: E402
 
 GOLDEN = os.path.join(os.path.dirname(__file__), "fixtures", "golden")
 TEST_FILES = os.path.join(os.path.dirname(__file__), "test_files")
@@ -61,9 +60,9 @@ def _extras(request: str) -> dict:
     letter = open_letter(pdf)
     extras = {
         "letterhead": letter.extract_letterhead(),
-        # budget_history is now a list of (title, DataFrame) pairs — one per metric.
-        "history": [{"title": title, "columns": list(df.columns), "data": df.values.tolist()}
-                    for title, df in letter.extract_budget_history()],
+        # budget_history is a list of (title, Table) pairs — one per metric.
+        "history": [{"title": title, "columns": list(table.columns), "data": [list(row) for row in table.rows]}
+                    for title, table in letter.extract_budget_history()],
     }
     json.dump(extras, open(cache, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     return extras
@@ -72,26 +71,24 @@ def _extras(request: str) -> dict:
 def render(request: str) -> str:
     golden = json.load(open(os.path.join(GOLDEN, f"{request}.json"), encoding="utf-8"))
     extras = _extras(request)
-    budget_history = [(h["title"], pd.DataFrame(h["data"], columns=h["columns"]))
+    budget_history = [(h["title"], Table(tuple(h["columns"]), tuple(map(tuple, h["data"]))))
                       for h in (extras["history"] or [])]
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     out = os.path.join(OUTPUT_DIR, f"{request}_preview.pdf")
     extraction = Extraction(
         source=golden.get("source"),
-        table=pd.DataFrame(golden["table"]),
-        matched_codes=set(golden.get("master_matched", [])),
-        relevant=True,
+        table=Table.from_records([c for c in golden["table"][0] if c != "master"], golden["table"]),
         # golden["text"] has the English attribute names; RequestFields maps them to the Hebrew labels.
         fields=RequestFields(**golden["text"]),
         letterhead=extras["letterhead"],
         budget_history=budget_history,
     )
     # The fixtures hold no master names, so list the table's own names for its master rows.
-    table = extraction.table
-    in_master = table[table["master"] == "כן"]
-    programs = dict(zip(in_master["number"].astype(str), in_master["name"].astype(str).str.strip()))
-    return str(SummaryPdfRenderer().render(extraction, Path(out), programs))
+    names = dict(zip(extraction.table.column("number"), extraction.table.column("name")))
+    programs = {code: str(names[code]).strip() for code in golden.get("master_matched", [])}
+    Path(out).write_bytes(SummaryPdfRenderer().render(extraction, programs))
+    return out
 
 
 if __name__ == "__main__":

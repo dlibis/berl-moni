@@ -50,7 +50,7 @@ def _extract(name):
     "pending_230_heading_variant.pdf", "pending_206_213_heading_variant.pdf"])
 def test_heading_variants_found_with_narrative(calls, name):
     result = _extract(name)
-    assert result.relevant and not result.scanned
+    assert result.relevant_to(MASTER) and not result.scanned
     assert len(calls) == 1 and calls[0].strip()
     assert result.fields.uses("000001")[0].text == "סיכום"
 
@@ -59,7 +59,7 @@ def test_heading_variants_found_with_narrative(calls, name):
     "pending_170_171_not_relevant.pdf", "pending_21_not_relevant.pdf"])
 def test_irrelevant_letter_makes_no_llm_call(calls, name):
     result = _extract(name)
-    assert not result.relevant
+    assert not result.relevant_to(MASTER) and not result.complete
     assert calls == []
 
 
@@ -87,8 +87,8 @@ def test_arithmetic_passes_on_real_letters(name):
 
 def test_scan_is_ocrd_marked_and_relevant_by_table_codes(calls, scan_md):
     result = _extract("pending_199_201_scan.pdf")
-    assert result.scanned and result.relevant
-    assert result.matched_codes <= MASTER and result.matched_codes
+    assert result.scanned and result.relevant_to(MASTER)
+    assert result.matched(MASTER)
     assert len(calls) == 1 and calls[0].strip()
 
 
@@ -102,7 +102,7 @@ def test_scan_ocr_with_no_text_is_no_text_error(monkeypatch):
 def test_scan_with_unbalanced_rows_still_extracts(calls, scan_md, monkeypatch):
     monkeypatch.setattr("bot.adapters.letter_pdf.parser.BudgetLetter.arithmetic_failures", lambda self: ["045203"])
     result = _extract("pending_199_201_scan.pdf")
-    assert result.scanned and result.relevant  # OCR'd tables can't be checked; the PDF says 'verify'
+    assert result.scanned and result.relevant_to(MASTER)  # OCR'd tables can't be checked; the PDF says 'verify'
 
 
 def test_scan_table_codes_come_from_table_rows_only(monkeypatch):
@@ -110,7 +110,7 @@ def test_scan_table_codes_come_from_table_rows_only(monkeypatch):
     monkeypatch.setattr(PdfDocument, "scanned", True)
     monkeypatch.setattr(PdfDocument, "markdown", md)
     table = open_letter("x.pdf").extract_combined_table()
-    assert list(table["number"]) == ["045203", "045212"]
+    assert table.column("number") == ["045203", "045212"]
 
 
 def test_scan_trailing_minus_is_moved_in_front(monkeypatch):

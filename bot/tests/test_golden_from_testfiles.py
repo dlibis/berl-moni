@@ -21,7 +21,7 @@ load_env()
 from bot import bootstrap  # noqa: E402
 from common.config import llm_settings  # noqa: E402
 from common.db import connect, load_programs  # noqa: E402
-from bot.domain.extraction import Extractor, MASTER_COLUMN  # noqa: E402
+from bot.domain.extraction import Extraction, Extractor  # noqa: E402
 from bot.adapters.letter_pdf.loader import open_letter  # noqa: E402
 
 TEST_FILES = os.path.join(os.path.dirname(__file__), "test_files")
@@ -72,8 +72,7 @@ def test_deterministic_fields_match_golden(req, pdf, golden, neon_test_db_url):
     assert Extractor._staffing(text) == golden["text"]["staffing_changes"]
 
     # table + master relevance (no LLM involved)
-    table, matched = extractor._table(letter)
-    assert MASTER_COLUMN in table.columns
+    matched = Extraction(pdf, letter.extract_combined_table()).matched(extractor.master)
     assert sorted(matched) == golden["master_matched"]
     assert bool(matched) == golden["expect_summary"]
 
@@ -83,11 +82,12 @@ def test_deterministic_fields_match_golden(req, pdf, golden, neon_test_db_url):
 @pytest.mark.parametrize("req,pdf,golden", CASES, ids=IDS)
 def test_full_extraction_matches_golden(req, pdf, golden, neon_test_db_url):
     """The whole Extractor, incl. the one coalition LLM call — needs an API key."""
-    result = _extractor(neon_test_db_url).extract(pdf)
+    extractor = _extractor(neon_test_db_url)
+    result = extractor.extract(pdf)
 
     assert result.fields.date == golden["text"]["date"]
     assert result.fields.staffing_changes == golden["text"]["staffing_changes"]
     assert result.fields.coalition_funds == golden["text"]["coalition_funds"]
     assert result.fields.program_number == golden["text"]["program_number"]
-    assert sorted(result.matched_codes) == golden["master_matched"]
-    assert result.relevant == golden["expect_summary"]
+    assert sorted(result.matched(extractor.master)) == golden["master_matched"]
+    assert result.relevant_to(extractor.master) == golden["expect_summary"]

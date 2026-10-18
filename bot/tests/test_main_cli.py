@@ -33,6 +33,9 @@ class Extraction:
     matched_codes: set = field(default_factory=lambda: {"123456"})
     llm_usage: dict | None = None
 
+    def relevant_to(self, programs):
+        return self.relevant
+
     def named_matches(self, programs):
         return {code: programs.get(code, "") for code in sorted(self.matched_codes)}
 
@@ -63,9 +66,8 @@ class Stubs:
         self.sent.append(kwargs)
 
     @staticmethod
-    def render(result, path, programs):
-        path.write_bytes(b"%PDF-1.4 " + path.stem.encode())
-        return path
+    def render(result, programs):
+        return b"%PDF-1.4 summary"
 
     def ports(self):
         return Ports(feed=self.fetch_letter_urls, extractor=lambda programs: self, render=self.render,

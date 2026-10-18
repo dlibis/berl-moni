@@ -11,7 +11,7 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from bot.adapters.summary_pdf.hebrew_text import rtl, wrap
-from bot.adapters.summary_pdf.money_flow import Item
+from bot.domain.money_flow import Item
 from bot.adapters.summary_pdf.theme import (DEST_GREEN, FONT, HUB_GREY, INK, MASTER_BLUE, MUTED,
                                             SOURCE_RED, money)
 

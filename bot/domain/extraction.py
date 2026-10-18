@@ -10,26 +10,24 @@ Extractor reads no environment, no database and no PDF library itself: bot.boots
 
     extractor = Extractor(programs, analyze=LlmAnalyzer(...), load=open_letter)
     result = extractor.extract(source)   # source = URL or local PDF path
-    result.fields        # RequestFields
-    result.table         # budget table + a `master` (כן/לא) column
-    result.matched_codes # letter codes that are in the master set
-    result.relevant      # True iff a summary should be produced
+    result.fields                  # RequestFields (None for an irrelevant letter: no LLM call)
+    result.table                   # the budget table (a plain Table)
+    result.matched(programs)       # letter codes that are in the master set
+    result.relevant_to(programs)   # True iff a summary should be produced
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Protocol
-
-import pandas as pd
+from typing import Callable, Iterable, Protocol
 
 from bot.domain.errors import ExtractionError
 from bot.domain.request_fields import PROGRAM_HEADING, ProgramUses, RequestFields
+from bot.domain.table import Table
 
-# The budget table's columns: code, name, '<metric> from' / '<metric> to' per metric, then master.
+# The budget table's columns: code, name, then '<metric> from' / '<metric> to' per metric.
 CODE_COLUMN = "number"
 NAME_COLUMN = "name"
-MASTER_COLUMN = "master"   # 'כן' if the code is in the master set, else 'לא'
 
 # With no table page after the narrative (no 'תאריך הבקשה'), the model reads at most this much text after
 # the heading: an upper bound that keeps a long letter out of the prompt, not a measured narrative length.
@@ -50,11 +48,11 @@ class LetterDocument(Protocol):
     """The loaded-letter operations used by Extractor."""
     doc: LetterText
 
-    def extract_combined_table(self) -> pd.DataFrame: ...
+    def extract_combined_table(self) -> Table: ...
     def arithmetic_failures(self) -> list[str]: ...
     def decision_links(self) -> list[str]: ...
     def extract_letterhead(self) -> list[str]: ...
-    def extract_budget_history(self) -> list[tuple[str, pd.DataFrame]]: ...
+    def extract_budget_history(self) -> list[tuple[str, Table]]: ...
 
 
 Load = Callable[[str], LetterDocument]
@@ -64,21 +62,37 @@ Load = Callable[[str], LetterDocument]
 class Extraction:
     """Everything read from one letter: what decides relevance, and, for a relevant letter,
     everything its summary PDF shows. Plain data; nothing here goes back to the PDF.
-    Letterhead and budget-history parsing happen here, so their failures are `extract_error`."""
+    Letterhead and budget-history parsing happen here, so their failures are `extract_error`.
+    Relevance depends on the programs list, so it is computed, never stored."""
     source: str                # the letter's URL (or path), printed as the summary's source link
-    table: pd.DataFrame        # the budget table (CODE_COLUMN, NAME_COLUMN, metrics, MASTER_COLUMN)
-    matched_codes: set[str]    # letter codes that are in the master set
-    relevant: bool             # a summary is produced iff this is True
+    table: Table               # the budget table (CODE_COLUMN, NAME_COLUMN, metrics)
     scanned: bool = False      # OCR'd letter: the PDF is marked "מכתב סרוק — יש לאמת מול המקור"
     # Read only for a relevant letter:
-    fields: RequestFields = field(default_factory=RequestFields)
+    fields: RequestFields | None = None
     letterhead: list[str] = field(default_factory=list)
-    budget_history: list[tuple[str, pd.DataFrame]] = field(default_factory=list)
+    budget_history: list[tuple[str, Table]] = field(default_factory=list)
     llm_usage: dict | None = None   # model + token counts of the one LLM call, for the job log
 
+    def codes(self) -> set[str]:
+        """The letter's program codes, zero-padded to 6 digits (as the master set holds them)."""
+        return {str(code).strip().zfill(6) for code in self.table.column(CODE_COLUMN)}
+
+    def matched(self, programs: Iterable[str]) -> set[str]:
+        """The letter's codes that are in `programs`."""
+        return self.codes() & set(programs)
+
+    def relevant_to(self, programs: Iterable[str]) -> bool:
+        """A summary is produced iff a letter code is in `programs`."""
+        return bool(self.matched(programs))
+
+    @property
+    def complete(self) -> bool:
+        """The LLM part ran (an irrelevant letter stops before it)."""
+        return self.fields is not None
+
     def named_matches(self, programs: dict[str, str]) -> dict[str, str]:
-        """{code: program name} for the master programs that made this letter relevant."""
-        return {code: programs.get(code, "") for code in sorted(self.matched_codes)}
+        """{code: program name} for the master programs that make this letter relevant."""
+        return {code: programs[code] for code in sorted(self.matched(programs))}
 
 
 class Extractor:
@@ -100,9 +114,9 @@ class Extractor:
         scanned = letter.doc.scanned
 
         # Relevance first: an irrelevant letter makes no model call and no field checks.
-        table, matched = self._table(letter)
-        if not matched:
-            return Extraction(source, table, matched, relevant=False, scanned=scanned)
+        table = letter.extract_combined_table()
+        if not Extraction(source, table).relevant_to(self.master):
+            return Extraction(source, table, scanned=scanned)
 
         bad_rows = letter.arithmetic_failures()
         if bad_rows and not scanned:
@@ -135,7 +149,7 @@ class Extractor:
         if empty:
             raise ExtractionError(f"empty required field: {', '.join(empty)}")
 
-        return Extraction(source, table, matched, relevant=True, scanned=scanned, fields=fields,
+        return Extraction(source, table, scanned=scanned, fields=fields,
                           letterhead=letter.extract_letterhead(), budget_history=letter.extract_budget_history(),
                           llm_usage=usage)
 
@@ -219,19 +233,3 @@ class Extractor:
             a, b = m.group(1), m.group(2)
             return f"{b}-{a}" if len(a) == 3 and len(b) == 2 else f"{a}-{b}"
         return re.sub(r"(\d{2,3})-(\d{2,3})", fix, value)
-
-    # ------------------------------------------------------- table + master
-    def _table(self, letter):
-        """The combined budget table + a `master` column and the matched codes."""
-        table = letter.extract_combined_table().copy()
-        table[MASTER_COLUMN] = [
-            "כן" if self._normalize(c) in self.master else "לא"
-            for c in table[CODE_COLUMN]
-        ]
-        matched = {self._normalize(c) for c in table[CODE_COLUMN]} & self.master
-        return table, matched
-
-    @staticmethod
-    def _normalize(code) -> str:
-        """A program code as a zero-padded 6-digit string (matches the master set)."""
-        return str(code).strip().zfill(6)

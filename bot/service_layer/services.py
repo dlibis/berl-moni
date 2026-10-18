@@ -10,7 +10,6 @@ check writes one `scans` row; a failed scan exits non-zero. Logs carry counts on
 """
 import logging
 import re
-import tempfile
 import urllib.error
 import uuid
 from dataclasses import dataclass, field
@@ -51,7 +50,7 @@ class Ports:
     """The outside world the use cases talk to (Cosmic Python ch. 13: injected, not imported)."""
     feed: Callable[[], list[str]]                                 # knesset.feed.fetch_letter_urls
     extractor: Callable[[dict[str, str]], LetterExtractor]        # programs -> domain.extraction.Extractor
-    render: Callable[[Extraction, Path, dict[str, str]], Path]      # summary_pdf.renderer.SummaryPdfRenderer.render
+    render: Callable[[Extraction, dict[str, str]], bytes]         # summary_pdf.renderer.SummaryPdfRenderer.render
     send_email: SendEmail                                         # resend.email_sender.send_email
     save_copy: Callable[[str, Path], None]                        # letter_pdf.download.save_copy (--no-email)
     now: Callable[[], datetime] = field(default=lambda: datetime.now(timezone.utc))
@@ -108,7 +107,7 @@ def failure_reason(error: Exception) -> LetterReason:
     return "extract_error"  # ExtractionError and anything else
 
 
-def scan_letter(extractor: LetterExtractor, render, url: str, programs: dict[str, str], out_dir: Path) -> Scan:
+def scan_letter(extractor: LetterExtractor, render, url: str, programs: dict[str, str]) -> Scan:
     """Extract one letter and, if relevant, render its summary. A reason of 'quota' means stop scanning."""
     slug = letter_slug(url)
     try:
@@ -122,7 +121,7 @@ def scan_letter(extractor: LetterExtractor, render, url: str, programs: dict[str
         else:
             logger.warning("%s: failed (%s, %s)", slug, reason, type(error).__name__)
         return Scan("failed", reason, unexpected=unexpected)
-    if not result.relevant:
+    if not result.relevant_to(programs):
         logger.info("%s: not relevant (no code in master), skipped", slug)
         return Scan("irrelevant")
     usage = result.llm_usage
@@ -133,8 +132,7 @@ def scan_letter(extractor: LetterExtractor, render, url: str, programs: dict[str
         if usage.get("corrected"):
             logger.info("%s: self-review corrected the draft: %s", slug, "; ".join(usage["review_problems"]))
     try:
-        path = render(result, out_dir / f"{slug}_summary.pdf", result.named_matches(programs))
-        return Scan("pending", pdf=path.read_bytes())
+        return Scan("pending", pdf=render(result, result.named_matches(programs)))
     except Exception:  # noqa: BLE001 - one bad render must not stop the run
         logger.exception("%s: summary PDF failed", slug)
         return Scan("failed", "render_error", unexpected=True)
@@ -242,16 +240,15 @@ def scan_new_letters(uow, ports: Ports, urls: list[str], stats: ScanCounts) -> S
     programs = uow.programs()
     extractor = ports.extractor(programs)
     unexpected = False
-    with tempfile.TemporaryDirectory() as tmp:
-        for url in new:
-            scan = scan_letter(extractor, ports.render, url, programs, Path(tmp))
-            uow.letters.insert(url, scan.status, scan.reason, scan.pdf)
-            uow.commit()
-            stats["relevant"] += scan.status == "pending"
-            stats["failed"] += scan.status == "failed"
-            unexpected = unexpected or scan.unexpected
-            if scan.reason == "quota":  # stop scanning; the rest stay untouched, pending ones still go out
-                return ScanNewLettersResult(True, unexpected)
+    for url in new:
+        scan = scan_letter(extractor, ports.render, url, programs)
+        uow.letters.insert(url, scan.status, scan.reason, scan.pdf)
+        uow.commit()
+        stats["relevant"] += scan.status == "pending"
+        stats["failed"] += scan.status == "failed"
+        unexpected = unexpected or scan.unexpected
+        if scan.reason == "quota":  # stop scanning; the rest stay untouched, pending ones still go out
+            return ScanNewLettersResult(True, unexpected)
     return ScanNewLettersResult(False, unexpected)
 
 
@@ -377,8 +374,9 @@ def render_all(uow, ports: Ports, out_dir: Path) -> int:
     rendered = failed = 0
     unexpected = False
     for url in urls:
-        scan = scan_letter(extractor, ports.render, url, programs, out_dir)
+        scan = scan_letter(extractor, ports.render, url, programs)
         if scan.status == "pending":
+            (out_dir / f"{letter_slug(url)}_summary.pdf").write_bytes(scan.pdf)
             rendered += 1
             try:
                 ports.save_copy(url, out_dir / f"{letter_slug(url)}_original.pdf")
