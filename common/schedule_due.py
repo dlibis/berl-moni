@@ -21,6 +21,13 @@ def day_time(schedule: list, day: date) -> time | None:
     return None
 
 
+def schedule_configured(schedule: list) -> bool:
+    """True if some range has not ended (Israel date) and enables at least one weekday."""
+    today = datetime.now(ISRAEL).date()
+    return any(date.fromisoformat(r["to"]) >= today and any(d.get("enabled") for d in r.get("days", {}).values())
+               for r in schedule)
+
+
 def due_day(now_utc: datetime, schedule: list, conn) -> date | None:
     """Today's Israel date if a send is due now, else None."""
     local = now_utc.astimezone(ISRAEL)
