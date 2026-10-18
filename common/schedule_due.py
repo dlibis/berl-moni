@@ -35,7 +35,7 @@ def due_day(now_utc: datetime, schedule: list, conn) -> date | None:
     at = day_time(schedule, today)
     if at is None or local.time() < at:
         return None
-    if conn.execute("SELECT 1 FROM send_runs WHERE day = %s AND status IN ('sending', 'sent', 'abandoned')",
+    if conn.execute("SELECT 1 FROM send_runs WHERE day = %s AND kind = 'auto' AND status IN ('sending', 'sent', 'abandoned')",
                     (today,)).fetchone():
         return None
     if conn.execute("SELECT 1 FROM scans WHERE day = %s AND reason = ANY(%s)",

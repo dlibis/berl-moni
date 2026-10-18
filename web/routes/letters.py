@@ -3,6 +3,7 @@ from flask import Blueprint, g, jsonify, request
 from bot.domain.errors import FeedUnreachable
 from bot.service_layer.analysis import refresh_feed, request_analysis
 from bot.service_layer.sending import send_letter
+from common.schedule_due import schedule_configured
 from common.db import connect, load_programs
 from web import bootstrap
 from web.auth import require_session
@@ -43,7 +44,8 @@ def get_letter(slug):
 def refresh():
     with bootstrap.uow() as uow:
         try:
-            result = refresh_feed(uow, bootstrap.ports().feed, auto=bool(uow.setting("auto_since")))
+            auto = schedule_configured(uow.setting("schedule", []))  # auto_since outlives an ended range
+            result = refresh_feed(uow, bootstrap.ports().feed, auto=auto)
         except FeedUnreachable:
             return jsonify({"error": "feed_unreachable"}), 502
     return jsonify({"new": result.new, "seen": result.seen})
@@ -71,7 +73,7 @@ def reanalyze(slug):
     return _analyze(slug, True)
 
 
-SEND_STATUS = {"not_found": 404, "not_sendable": 409, "confirm_resend": 409, "over_budget": 429,
+SEND_STATUS = {"not_found": 404, "not_sendable": 409, "confirm_resend": 409, "run_open": 409, "over_budget": 429,
                "settings": 409, "failed": 502}
 
 

@@ -163,3 +163,45 @@ def test_render_error_writes_nothing(uow, broken_render_ports, analyzed_relevant
 def test_resend_error_parks_the_run(uow, failing_send_ports, analyzed_relevant, one):
     r = send_letter(uow, failing_send_ports, analyzed_relevant, None)
     assert r == ("failed", "validation_error") and one("SELECT status FROM send_runs")["status"] == "failed"
+
+
+def test_retry_after_a_resend_error_is_refused_while_the_run_is_open(uow, analyzed_relevant):
+    assert send_letter(uow, make_ports([], fail=ResendError(422, "validation_error")), analyzed_relevant, None).outcome == "failed"
+    retry = make_ports([])
+    assert send_letter(uow, retry, analyzed_relevant, None, resend=True).outcome == "run_open"
+    assert retry.sent == []  # the parked run is resumed from the status card, never sent again with new keys
+
+
+def test_open_runs_count_against_the_budget(uow, ports, analyzed_relevant, query):
+    write_setting(uow.conn, "resend_daily_limit", 4)
+    write_setting(uow.conn, "resend_reserve", 0)
+    uow.conn.execute("INSERT INTO send_runs (day, status, kind, from_address, reply_to_address, recipients, batches) "
+                     "VALUES (current_date, 'sending', 'manual', 'moni@berl.site', 'r@x.org', '[\"a@x\", \"b@x\"]', "
+                     "'[[\"other\"]]')")  # 1 message of 3 emails reserved, none logged yet
+    uow.commit()
+    assert send_letter(uow, ports, analyzed_relevant, None).outcome == "over_budget" and ports.sent == []
+
+
+def test_two_concurrent_clicks_send_once(test_db_url, uow, analyzed_relevant):
+    import threading
+    started, release, results = threading.Event(), threading.Event(), []
+
+    def slow_send(**kwargs):
+        started.set()
+        release.wait(10)
+        return "id1"
+
+    first = Ports(feed=None, extractor=None, render=lambda e, m: b"%PDF-1.7", send_email=slow_send, save_copy=None)
+
+    def click(p):
+        with UnitOfWork(test_db_url) as other:
+            results.append(send_letter(other, p, analyzed_relevant, None).outcome)
+
+    t = threading.Thread(target=click, args=(first,))
+    t.start()
+    assert started.wait(10)
+    second = make_ports([])
+    click(second)  # while the first click is still sending
+    release.set()
+    t.join(10)
+    assert sorted(results) == ["run_open", "sent"] and second.sent == []

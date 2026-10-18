@@ -191,6 +191,22 @@ def test_refresh_counts_and_auto_since(client, monkeypatch):
     assert r.get_json() == {"new": 0, "seen": 1}
 
 
+def test_refresh_after_the_schedule_ended_does_not_queue_paid_analysis(client, monkeypatch, test_db_url):
+    from bot.domain.feed import FeedLetter
+    from common.db import set_setting
+    with psycopg.connect(test_db_url, row_factory=dict_row) as conn:  # auto_since stays set when a range runs out
+        set_setting(conn, "auto_since", "2000-01-01T00:00:00+00:00")
+        set_setting(conn, "schedule", [{"from": "2000-01-01", "to": "2000-01-02",
+                                        "days": {"mon": {"enabled": True, "time": "09:00"}}}])
+    monkeypatch.setattr("web.bootstrap.ports", lambda: Ports(
+        feed=lambda: [FeedLetter("https://example.test/g.pdf", date(2026, 1, 1), "m", ("1",), ())],
+        extractor=None, render=None, send_email=None, save_copy=None))
+    client.post("/api/v1/letters/refresh", json={}, headers=ORIGIN)
+    with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
+        row = conn.execute("SELECT analysis_status FROM letters WHERE letter_url = 'https://example.test/g.pdf'").fetchone()
+    assert row["analysis_status"] == "discovered"
+
+
 def test_refresh_feed_down_is_502(client, monkeypatch):
     def down():
         raise FeedUnreachable("page 1")

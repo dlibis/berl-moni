@@ -15,7 +15,7 @@ import urllib.error
 import uuid
 from dataclasses import dataclass, field
 from functools import partial
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Protocol, TypedDict
 
@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 EMAIL_SUBJECT = "סיכום מכתבי העברה תקציבית"
 EMAIL_HTML = '<div dir="rtl"><p>מצורפים סיכומי מכתבי ההעברה התקציבית הרלוונטיים לתוכניות הקרן.</p></div>'
 SENDER_DOMAIN = "berl.site"  # the verified Resend domain every from_address must use
+# Longer than the web function's maxDuration (300 s): a manual run younger than this may still be sending.
+MANUAL_SEND_GRACE = timedelta(minutes=5)
 TEST_SUBJECT = "moni – test email"
 TEST_HTML = "<p>This is a test email from the moni budget-letter bot.</p>"
 
@@ -215,6 +217,9 @@ def resume_run(uow, ports: Ports, run: dict, today) -> int:
 def send_job(uow, ports: Ports) -> int:
     now = ports.now()
     run = uow.send_runs.find_open()
+    if run and run["kind"] == "manual" and run["status"] == "sending" and now - run["started_at"] < MANUAL_SEND_GRACE:
+        logger.info("run %d: a manual send is still in its web request, left alone", run["id"])
+        return 0
     if run:
         return resume_run(uow, ports, run, now.astimezone(ISRAEL).date())
     day = uow.due_day(now)
@@ -230,7 +235,7 @@ def send_job(uow, ports: Ports) -> int:
 
     from bot.service_layer.analysis import drain_queue, refresh_feed  # analysis imports this module
     if uow.setting("auto_since") is None:  # a schedule saved before auto_since existed: auto mode starts now
-        uow.set_setting("auto_since", now.isoformat())
+        uow.set_setting("auto_since", uow.db_now())
         uow.commit()
     try:
         refreshed = refresh_feed(uow, ports.feed, auto=True)

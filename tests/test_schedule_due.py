@@ -60,3 +60,17 @@ def test_schedule_configured():
     assert not schedule_configured([]) and schedule_configured(EVERY_DAY)
     assert not schedule_configured([{**EVERY_DAY[0], "to": "2000-01-02"}])
     assert not schedule_configured([{**EVERY_DAY[0], "days": {"mon": {"enabled": False, "time": "09:00"}}}])
+
+
+def test_manual_send_today_does_not_cancel_the_auto_send(test_db_url):
+    import psycopg
+    from psycopg.rows import dict_row
+    with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
+        conn.execute("TRUNCATE send_runs RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE scans")
+        conn.execute("INSERT INTO send_runs (day, status, kind, from_address, reply_to_address, batches) "
+                     "VALUES ('2026-10-14', 'sent', 'manual', 'a@berl.site', 'r@x', '[]')")
+        assert due_day(at(2026, 10, 14, 12), SCHEDULE, conn) == date(2026, 10, 14)
+        conn.execute("INSERT INTO send_runs (day, status, kind, from_address, reply_to_address, batches) "
+                     "VALUES ('2026-10-14', 'sent', 'auto', 'a@berl.site', 'r@x', '[]')")
+        assert due_day(at(2026, 10, 14, 12), SCHEDULE, conn) is None

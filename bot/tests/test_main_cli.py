@@ -2,6 +2,7 @@
 the feed, the Extractor, the renderer and Resend."""
 import logging
 import urllib.error
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests
@@ -40,6 +41,7 @@ class Stubs:
 
     def __init__(self):
         self.urls, self.outcomes, self.scanned, self.sent = [], {}, [], []
+        self.clock_ahead = timedelta(0)
         self.feed_down, self.fail_call, self.pdf = False, None, PDF
 
     def fetch_letters(self):
@@ -67,7 +69,8 @@ class Stubs:
 
     def ports(self):
         return Ports(feed=self.fetch_letters, extractor=lambda programs: self, render=self.render,
-                     send_email=self.send_email, save_copy=lambda source, dest: None)
+                     send_email=self.send_email, save_copy=lambda source, dest: None,
+                     now=lambda: datetime.now(timezone.utc) + self.clock_ahead)
 
 
 @pytest.fixture
@@ -318,6 +321,24 @@ def test_sending_run_without_resume_request_is_job_died(db, stubs):
     assert len(stubs.sent) == sent_before
 
 
+def test_a_manual_send_still_in_its_web_request_is_left_alone(db, stubs):
+    with connect(db) as conn:  # a Send click a moment ago: the Flask request is still delivering
+        conn.execute("INSERT INTO send_runs (day, status, kind, from_address, reply_to_address, recipients, batches) "
+                     "VALUES (current_date, 'sending', 'manual', %s, %s, '[]', '[]')", (FROM, REPLY))
+    assert run(stubs) == 0
+    [r] = rows(db, "SELECT status, error FROM send_runs")
+    assert (r["status"], r["error"]) == ("sending", None) and stubs.sent == []
+
+
+def test_a_manual_send_older_than_the_web_time_limit_is_job_died(db, stubs):
+    with connect(db) as conn:
+        conn.execute("INSERT INTO send_runs (day, status, kind, from_address, reply_to_address, recipients, batches, "
+                     "started_at) VALUES (current_date, 'sending', 'manual', %s, %s, '[]', '[]', "
+                     "now() - interval '10 minutes')", (FROM, REPLY))
+    assert run(stubs) == 1
+    assert rows(db, "SELECT error FROM send_runs")[0]["error"] == "job_died"
+
+
 def test_resume_over_budget_goes_back_to_failed(db, stubs):
     two_chunk_list(db)
     stubs.urls, stubs.fail_call = [A], 2
@@ -361,7 +382,7 @@ def test_letters_discovered_before_auto_since_are_not_sent(db, stubs):
 def test_first_due_run_without_auto_since_sets_it_and_sends_new_letters(db, stubs):
     with connect(db) as conn:  # a schedule saved before auto_since existed
         conn.execute("DELETE FROM settings WHERE key = 'auto_since'")
-    stubs.urls = [A]
+    stubs.urls, stubs.clock_ahead = [A], timedelta(seconds=2)  # the runner's clock ahead of Postgres'
     assert run(stubs) == 0
     assert statuses(db) == {A: ("analyzed", None, 1)} and len(stubs.sent) == 1
     assert rows(db, "SELECT value FROM settings WHERE key = 'auto_since'")[0]["value"]

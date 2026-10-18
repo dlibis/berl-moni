@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class SendResult(NamedTuple):
-    outcome: Literal["sent", "not_found", "not_sendable", "confirm_resend", "over_budget", "settings", "failed"]
+    outcome: Literal["sent", "not_found", "not_sendable", "confirm_resend", "run_open", "over_budget", "settings",
+                     "failed"]
     detail: str | None = None
 
 
@@ -46,10 +47,18 @@ def send_letter(uow, ports: Ports, slug: str, user: str | None, resend: bool = F
         logger.exception("%s: render failed", slug)
         return SendResult("failed", type(error).__name__)
 
-    uow.send_runs.lock_budget()
+    uow.send_runs.lock_budget()  # held until the run row commits: a second click waits here, then sees the run
+    if uow.send_runs.open_for(url):  # still sending, or parked for a person to resume or abandon
+        uow.rollback()
+        return SendResult("run_open")
+    if uow.letters.get(slug)["send_count"] > 0 and not resend:  # sent while this click waited for the lock
+        uow.rollback()
+        return SendResult("confirm_resend")
     sent_today, sent_month = uow.email_log.counts()
+    reserved = uow.send_runs.reserved_emails()
     daily, reserve, monthly = limits(uow)
-    if not plan.fit_budget([[url]], plan.chunks(recipients), sent_today, sent_month, daily, reserve, monthly):
+    if not plan.fit_budget([[url]], plan.chunks(recipients), sent_today + reserved, sent_month + reserved,
+                           daily, reserve, monthly):
         uow.rollback()  # release the send lock
         return SendResult("over_budget")
     day = ports.now().astimezone(ISRAEL).date()

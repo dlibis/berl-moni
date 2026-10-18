@@ -30,6 +30,14 @@ export function LetterStatusBadge({ letter }: { letter: LetterItem }) {
       >
         {label(letter)}
       </span>
+      {!failed && letter.last_error ? (
+        <span
+          className={`${base} bg-destructive/10 text-destructive`}
+          title={letter.last_error}
+        >
+          הניתוח האחרון נכשל
+        </span>
+      ) : null}
       {letter.send_count > 0 ? (
         <span
           className={`${base} bg-primary/10 text-primary`}

@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime, timezone
+from datetime import date
 
 from flask import Blueprint, jsonify, request
 
@@ -61,5 +61,6 @@ def set_schedule():
         was_on = schedule_configured(get_setting(conn, "schedule", []))
         set_setting(conn, "schedule", schedule)
         if schedule_configured(schedule) != was_on:
-            set_setting(conn, "auto_since", datetime.now(timezone.utc).isoformat() if not was_on else None)
+            db_now = conn.execute("SELECT now() AS now").fetchone()["now"]  # the clock first_seen_at uses
+            set_setting(conn, "auto_since", db_now.isoformat() if not was_on else None)
     return jsonify({"schedule": schedule})

@@ -20,7 +20,10 @@ export function useSendLetter() {
       ) {
         return;
       }
-      if (error instanceof ApiError && error.status === 429) {
+      if (error instanceof ApiError && error.message === "run_open") {
+        toast.error("יש שליחה פתוחה של המכתב הזה. יש להשלים או לבטל אותה בכרטיס בעמוד הראשי");
+        queryClient.invalidateQueries({ queryKey: ["status"] });
+      } else if (error instanceof ApiError && error.status === 429) {
         toast.error("הגעתם למכסת המיילים היומית");
       } else {
         toast.error("השליחה נכשלה");

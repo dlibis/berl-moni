@@ -43,6 +43,10 @@ class UnitOfWork:
     def set_setting(self, key: str, value) -> None:
         set_setting(self.conn, key, value)
 
+    def db_now(self) -> str:
+        """Postgres' clock (ISO): what first_seen_at is stamped with, so comparisons with it are exact."""
+        return self.conn.execute("SELECT now() AS now").fetchone()["now"].isoformat()
+
     def mailing_list(self) -> list[str]:
         return list_emails(self.conn)
 
