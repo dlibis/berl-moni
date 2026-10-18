@@ -10,6 +10,7 @@ import requests
 from bot.adapters.postgres.email_log import EmailLogRepository
 from bot.adapters.postgres.letters import LettersRepository
 from bot.domain.errors import DownloadError, ExtractionError, FeedUnreachable, NoTextError, ResendError
+from bot.domain.feed import FeedLetter
 from bot.entrypoints import main
 from bot.service_layer import services
 from bot.service_layer.services import Ports
@@ -48,10 +49,10 @@ class Stubs:
         self.urls, self.outcomes, self.scanned, self.sent = [], {}, [], []
         self.feed_down, self.fail_call = False, None
 
-    def fetch_letter_urls(self):
+    def fetch_letters(self):
         if self.feed_down:
             raise FeedUnreachable("page 1: ConnectionError")
-        return list(self.urls)
+        return [FeedLetter(url, None, "", (), ()) for url in self.urls]
 
     def extract(self, url):
         self.scanned.append(url)
@@ -70,7 +71,7 @@ class Stubs:
         return b"%PDF-1.4 summary"
 
     def ports(self):
-        return Ports(feed=self.fetch_letter_urls, extractor=lambda programs: self, render=self.render,
+        return Ports(feed=self.fetch_letters, extractor=lambda programs: self, render=self.render,
                      send_email=self.send_email, save_copy=lambda source, dest: None)
 
 

@@ -1,6 +1,6 @@
 """Adapters: one package per outside system; each file does one job against it.
 
-    knesset/      feed.py           fetch_letter_urls — pending letters' PDF URLs from the Knesset API
+    knesset/      feed.py           fetch_letters — pending letters (URL, date, ministry, request numbers) from the Knesset API
     letter_pdf/   download.py       local_copy — the PDF on disk (downloads + caches a URL)
                   reader.py         PdfDocument — text, tables and OCR from a local PDF
                   parser.py         BudgetLetter — the letter's budget table, history, letterhead, links
