@@ -6,13 +6,16 @@ It takes a PdfDocument (clean text + tables) and exposes the raw materials the E
 PdfDocument's job. Request-field extraction is NOT here; it lives in bot/domain/extraction.py.
 
     letter = BudgetLetter(PdfDocument(path), source)   # see letter_pdf.loader.open_letter
-    letter.extract_combined_table()                    # -> DataFrame
+    letter.extract_combined_table()                    # -> Table (DataFrames inside, converted at the edge)
 """
 from __future__ import annotations
 
+import hashlib
 import re
+from pathlib import Path
 
 from bot.adapters.letter_pdf.reader import PdfDocument
+from bot.adapters.letter_pdf.tables import to_table
 from bot.domain.extraction import CODE_COLUMN, NAME_COLUMN
 
 
@@ -33,6 +36,18 @@ class BudgetLetter:
     def __init__(self, doc: PdfDocument, source: str):
         self.doc = doc
         self.source = source  # the URL (or path) the letter came from, printed on the summary
+        candidate = Path(doc.path) if doc is not None else None
+        path = candidate if candidate is not None and candidate.is_file() else None
+        self.source_size = path.stat().st_size if path is not None else 0
+        self.source_sha256 = self._sha256(path) if path is not None else ""
+
+    @staticmethod
+    def _sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     # ---- combined budget table + arithmetic check ----
 
@@ -45,8 +60,8 @@ class BudgetLetter:
         name), taken from the 6-digit cells of the OCR markdown's table rows.
         """
         if self.doc.scanned:
-            return self._scan_table()
-        return self._combine_tables(self.doc.tables)
+            return to_table(self._scan_table())
+        return to_table(self._combine_tables(self.doc.tables))
 
     def _scan_table(self):
         """Codes from the 6-digit cells of the OCR markdown's table rows — never from
@@ -224,7 +239,7 @@ class BudgetLetter:
         return list(seen.values())
 
     def extract_budget_history(self):
-        """Return the appendix's budget-history tables as (title, DataFrame) pairs.
+        """Return the appendix's budget-history tables as (title, Table) pairs.
 
         The 'היסטוריה תקציבית' appendix holds one table per budget metric — e.g.
         הוצאה נטו / הוצאה מותנית בהכנסה / הרשאה להתחייב — each introduced by its own
@@ -260,7 +275,7 @@ class BudgetLetter:
                 title = titles[0]                    # single table with its own title
             else:
                 title = self.BUDGET_HISTORY_GENERIC  # metric unknown — don't assert one
-            out.append((title, self._clean_history_table(table)))
+            out.append((title, to_table(self._clean_history_table(table))))
         return out
 
     def _same_header(self, a, b) -> bool:

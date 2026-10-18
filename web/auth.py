@@ -2,7 +2,7 @@ from functools import wraps
 import os
 
 import requests
-from flask import jsonify, request
+from flask import g, jsonify, request
 
 
 def require_session(view):
@@ -22,7 +22,8 @@ def require_session(view):
             data = response.json()
         except ValueError:
             return jsonify({"error": "authentication unavailable"}), 503
-        if not isinstance(data, dict) or data.get("session") is None or data.get("user") is None:
+        if not isinstance(data, dict) or data.get("session") is None or not isinstance(data.get("user"), dict):
             return jsonify({"error": "unauthorized"}), 401
+        g.user = data["user"].get("email") or data["user"].get("id")
         return view(*args, **kwargs)
     return wrapped

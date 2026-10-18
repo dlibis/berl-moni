@@ -2,12 +2,28 @@
 
 The Extractor returns this model from its deterministic rules and one LLM call, so callers know
 exactly what comes back. Attribute names are English (valid Python identifiers, nice
-in code and IDEs); the Hebrew labels used by the reports and existing outputs are kept
-as aliases. `model_dump(by_alias=True)` yields the Hebrew-keyed dict the reports expect.
+in code and IDEs); the Hebrew labels the summary PDF prints are kept as aliases.
 """
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# A program's heading in the narrative: 'NNNNNN:' (5-6 digits, not part of a longer number). Not
+# anchored to a line start: a heading may share its line with the text before it. A dash heading
+# ('206101 - ...', 21656) is not matched: in the narrative a dash also follows table rows.
+PROGRAM_HEADING = r"(?<![\d.,])(\d{5,6})\s*:"
+
+
+class Use(BaseModel):
+    """One thing a program's money is for, as the model writes it from 'מטרת השינוי'."""
+    text: str
+    coalition: bool = False   # the letter says this use is funded by coalition money
+
+
+class ProgramUses(BaseModel):
+    """What one program's money in this request is for."""
+    code: str
+    uses: list[Use] = Field(default_factory=list)
 
 
 class RequestFields(BaseModel):
@@ -15,34 +31,15 @@ class RequestFields(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    date: str = Field(
-        default="", alias="תאריך",
-        description="תאריך הבקשה מדפי הטבלה, בפורמט DD/MM/YYYY. אם אינו מופיע, החזר מחרוזת ריקה.")
-    request_number: str = Field(
-        default="", alias="מס' פנייה",
-        description=("רק מספרי הבקשה עצמם בפורמט NN-NNN בדיוק כפי שהם מופיעים בטקסט, "
-                     "מופרדים בפסיק, ללא המילים 'בקשה מספר'. לאחר מכן הוסף 'מספר פנייה לועדה: X'."))
-    program_number: str = Field(
-        default="", alias="מס' תוכנית",
-        description=("רק קודי התוכניות המופיעים ככותרת 'תכנית NNNNNN:' בתוך מקטע 'עיקרי הפנייה "
-                     "בחלוקה לתוכניות'. אל תיקח קודים מטבלאות התקציב. אם יש כמה, החזר מופרדים בפסיק."))
-    request_summary: str = Field(
-        default="", alias="עיקרי הפנייה",
-        description=("העתק מילה במילה את כל הנרטיב שאחרי הכותרת 'עיקרי הפנייה:' — הפסקה "
-                     "הפותחת, כל בלוק 'NNNNNN: ... תיאור התוכנית: ...' וכל בלוק 'מטרת השינוי:'. "
-                     "אל תסכם ואל תנסח מחדש."))
-    decision_links: str = Field(
-        default="", alias="קישורים להחלטות ממשלה",
-        description="קישורים להחלטות ממשלה אם מופיעים בטקסט. אם אין, החזר מחרוזת ריקה.")
-    coalition_funds: str = Field(
-        default="", alias="האם יש התייחסות לכספים קואליציונים",
-        description=("'כן' או 'לא' בלבד לפי ההצהרה המפורשת במכתב. "
-                     "אם נכתב 'אינה כוללת כספים קואליציוניים' החזר 'לא'."))
-    staffing_changes: str = Field(
-        default="", alias="שינויים בכוח אדם",
-        description="'כן' או 'לא' בלבד, לפי האם המכתב מציין שינויים בכוח אדם.")
+    date: str = Field(default="", alias="תאריך")
+    request_number: str = Field(default="", alias="מס' פנייה")
+    program_number: str = Field(default="", alias="מס' תוכנית")
+    total_amount: str = Field(default="", alias="סך הפנייה")   # thousands of ₪, as printed: '190,709'
+    programs: list[ProgramUses] = Field(default_factory=list)
+    decision_links: str = Field(default="", alias="קישורים להחלטות ממשלה")
+    coalition_funds: str = Field(default="", alias="כספים קואליציוניים")   # כן / לא / אולי
+    staffing_changes: str = Field(default="", alias="שינויים בכוח אדם")
 
-    @classmethod
-    def field_labels(cls) -> list[str]:
-        """The Hebrew field labels, in declaration order (replaces the old REQUEST_FIELDS)."""
-        return [info.alias for info in cls.model_fields.values()]
+    def uses(self, code: str) -> list[Use]:
+        """What a program's money is for; [] when the letter does not say (e.g. a source)."""
+        return next((p.uses for p in self.programs if p.code == code), [])

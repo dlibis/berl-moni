@@ -3,40 +3,39 @@
 `Extractor` owns ALL request-field extraction for a budget-transfer letter. Most fields are
 produced by deterministic methods over the FULL letter text (no truncation). One call to
 `analyze` (bot.adapters.llm.letter_analyzer.LlmAnalyzer in production, a lambda in tests) over the narrative region
-does the two things that vary per letter: judging `coalition_funds` and returning the
-request text VERBATIM. No deterministic fallback. `load(source)` returns the letter
+does the two things that vary per letter: judging `coalition_funds` and saying, per program,
+what the request's money is for. No deterministic fallback. `load(source)` returns the letter
 (bot.adapters.letter_pdf.loader.open_letter in production): its text, tables and links. The
 Extractor reads no environment, no database and no PDF library itself: bot.bootstrap builds it.
 
     extractor = Extractor(programs, analyze=LlmAnalyzer(...), load=open_letter)
     result = extractor.extract(source)   # source = URL or local PDF path
-    result.fields        # RequestFields
-    result.table         # budget table + a `master` (כן/לא) column
-    result.matched_codes # letter codes that are in the master set
-    result.relevant      # True iff a summary should be produced
+    result.fields                  # RequestFields (None for an irrelevant letter: no LLM call)
+    result.table                   # the budget table (a plain Table)
+    result.matched(programs)       # letter codes that are in the master set
+    result.relevant_to(programs)   # True iff a summary should be produced
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Protocol
-
-import pandas as pd
+from typing import Callable, Iterable, Protocol
 
 from bot.domain.errors import ExtractionError
-from bot.domain.request_fields import RequestFields
+from bot.domain.request_fields import PROGRAM_HEADING, ProgramUses, RequestFields
+from bot.domain.table import Table
+from bot.domain.versions import SCHEMA_VERSION
 
-# The budget table's columns: code, name, '<metric> from' / '<metric> to' per metric, then master.
+# The budget table's columns: code, name, then '<metric> from' / '<metric> to' per metric.
 CODE_COLUMN = "number"
 NAME_COLUMN = "name"
-MASTER_COLUMN = "master"   # 'כן' if the code is in the master set, else 'לא'
 
 # With no table page after the narrative (no 'תאריך הבקשה'), the model reads at most this much text after
 # the heading: an upper bound that keeps a long letter out of the prompt, not a measured narrative length.
 NARRATIVE_MAX_CHARS = 16_000
 
-# region -> (coalition 'כן'/'לא', the request text verbatim, token usage dict)
-Analyze = Callable[[str], "tuple[str, str, dict | None]"]
+# region -> (coalition 'כן'/'לא'/'אולי', what each program's money is for, token usage dict)
+Analyze = Callable[[str], "tuple[str, list[ProgramUses], dict | None]"]
 
 
 class LetterText(Protocol):
@@ -49,12 +48,14 @@ class LetterText(Protocol):
 class LetterDocument(Protocol):
     """The loaded-letter operations used by Extractor."""
     doc: LetterText
+    source_sha256: str
+    source_size: int
 
-    def extract_combined_table(self) -> pd.DataFrame: ...
+    def extract_combined_table(self) -> Table: ...
     def arithmetic_failures(self) -> list[str]: ...
     def decision_links(self) -> list[str]: ...
     def extract_letterhead(self) -> list[str]: ...
-    def extract_budget_history(self) -> list[tuple[str, pd.DataFrame]]: ...
+    def extract_budget_history(self) -> list[tuple[str, Table]]: ...
 
 
 Load = Callable[[str], LetterDocument]
@@ -64,21 +65,79 @@ Load = Callable[[str], LetterDocument]
 class Extraction:
     """Everything read from one letter: what decides relevance, and, for a relevant letter,
     everything its summary PDF shows. Plain data; nothing here goes back to the PDF.
-    Letterhead and budget-history parsing happen here, so their failures are `extract_error`."""
+    Letterhead and budget-history parsing happen here, so their failures are `extract_error`.
+    Relevance depends on the programs list, so it is computed, never stored."""
     source: str                # the letter's URL (or path), printed as the summary's source link
-    table: pd.DataFrame        # the budget table (CODE_COLUMN, NAME_COLUMN, metrics, MASTER_COLUMN)
-    matched_codes: set[str]    # letter codes that are in the master set
-    relevant: bool             # a summary is produced iff this is True
+    table: Table               # the budget table (CODE_COLUMN, NAME_COLUMN, metrics)
     scanned: bool = False      # OCR'd letter: the PDF is marked "מכתב סרוק — יש לאמת מול המקור"
     # Read only for a relevant letter:
-    fields: RequestFields = field(default_factory=RequestFields)
+    fields: RequestFields | None = None
     letterhead: list[str] = field(default_factory=list)
-    budget_history: list[tuple[str, pd.DataFrame]] = field(default_factory=list)
+    budget_history: list[tuple[str, Table]] = field(default_factory=list)
     llm_usage: dict | None = None   # model + token counts of the one LLM call, for the job log
+    source_sha256: str = ""
+    source_size: int = 0
+
+    @staticmethod
+    def _table_to_json(table: Table) -> dict:
+        return {"columns": list(table.columns), "rows": [list(row) for row in table.rows]}
+
+    @staticmethod
+    def _table_from_json(data: dict) -> Table:
+        return Table(tuple(data["columns"]), tuple(tuple(row) for row in data["rows"]))
+
+    def to_json(self) -> dict:
+        """The versioned, program-independent extraction persisted by the worker."""
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "source": self.source,
+            "scanned": self.scanned,
+            "table": self._table_to_json(self.table),
+            "budget_history": [
+                {"label": label, "table": self._table_to_json(table)}
+                for label, table in self.budget_history
+            ],
+            "letterhead": self.letterhead,
+            "fields": self.fields.model_dump() if self.fields is not None else None,
+            "llm_usage": self.llm_usage,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict) -> Extraction:
+        fields = RequestFields.model_validate(data["fields"]) if data.get("fields") is not None else None
+        return cls(
+            source=data["source"],
+            table=cls._table_from_json(data["table"]),
+            scanned=data.get("scanned", False),
+            fields=fields,
+            letterhead=list(data.get("letterhead", [])),
+            budget_history=[
+                (item["label"], cls._table_from_json(item["table"]))
+                for item in data.get("budget_history", [])
+            ],
+            llm_usage=data.get("llm_usage"),
+        )
+
+    def codes(self) -> set[str]:
+        """The letter's program codes, zero-padded to 6 digits (as the master set holds them)."""
+        return {str(code).strip().zfill(6) for code in self.table.column(CODE_COLUMN)}
+
+    def matched(self, programs: Iterable[str]) -> set[str]:
+        """The letter's codes that are in `programs`."""
+        return self.codes() & set(programs)
+
+    def relevant_to(self, programs: Iterable[str]) -> bool:
+        """A summary is produced iff a letter code is in `programs`."""
+        return bool(self.matched(programs))
+
+    @property
+    def complete(self) -> bool:
+        """The LLM part ran (an irrelevant letter stops before it)."""
+        return self.fields is not None
 
     def named_matches(self, programs: dict[str, str]) -> dict[str, str]:
-        """{code: program name} for the master programs that made this letter relevant."""
-        return {code: programs.get(code, "") for code in sorted(self.matched_codes)}
+        """{code: program name} for the master programs that make this letter relevant."""
+        return {code: programs[code] for code in sorted(self.matched(programs))}
 
 
 class Extractor:
@@ -98,11 +157,12 @@ class Extractor:
         """Extract one letter (URL or local path) into fields + table + relevance."""
         letter = self.load(source)
         scanned = letter.doc.scanned
+        source_details = {"source_sha256": letter.source_sha256, "source_size": letter.source_size}
 
         # Relevance first: an irrelevant letter makes no model call and no field checks.
-        table, matched = self._table(letter)
-        if not matched:
-            return Extraction(source, table, matched, relevant=False, scanned=scanned)
+        table = letter.extract_combined_table()
+        if not Extraction(source, table).relevant_to(self.master):
+            return Extraction(source, table, scanned=scanned, **source_details)
 
         bad_rows = letter.arithmetic_failures()
         if bad_rows and not scanned:
@@ -114,27 +174,28 @@ class Extractor:
         if not region:
             raise ExtractionError("heading 'עיקרי הפנייה' not found or has no text")
         text = letter.doc.text
-        # The ONE LLM call: coalition judgment + the full request text (not a summary).
-        coalition, summary, usage = self.analyze(region)
+        # The ONE LLM call: coalition judgment + what each program's money is for.
+        coalition, programs, usage = self.analyze(region)
         fields = RequestFields(
             date=self._date(text),
             request_number=self._request_number(text),
-            program_number=self._program_number(summary),
-            request_summary=summary,
+            program_number=self._program_number(region),
+            total_amount=self._total_amount(region),
+            programs=programs,
             decision_links=self._decision_links(letter),
             staffing_changes=self._staffing(text),
             coalition_funds=coalition,
         )
         # A scan's date / request number may be unreadable (flagged "verify"); a text
         # letter must have every required field.
-        required = {"request_summary": fields.request_summary}
-        if not scanned:
-            required |= {"date": fields.date, "request_number": fields.request_number}
+        required = {} if scanned else {"date": fields.date, "request_number": fields.request_number}
         empty = [name for name, value in required.items() if not value.strip()]
+        if not fields.programs:
+            empty.append("programs")
         if empty:
             raise ExtractionError(f"empty required field: {', '.join(empty)}")
 
-        return Extraction(source, table, matched, relevant=True, scanned=scanned, fields=fields,
+        return Extraction(source, table, scanned=scanned, fields=fields, **source_details,
                           letterhead=letter.extract_letterhead(), budget_history=letter.extract_budget_history(),
                           llm_usage=usage)
 
@@ -178,10 +239,19 @@ class Extractor:
         return text[m.end():end].strip()
 
     @staticmethod
+    def _total_amount(region: str) -> str:
+        """The request's total as the opening sentence prints it ('... סך של 190,709 אלפי ש"ח'), in
+        thousands of ₪; "" when the letter states none."""
+        m = re.search(r"סך של\s*([\d,]+)\s*אלפי", region)
+        return m.group(1) if m else ""
+
+    @staticmethod
     def _program_number(scope: str) -> str:
-        """Program codes named as 'NNNNNN:' in the given text, in order, de-duplicated."""
-        codes = re.findall(r"תו?כנית\s*:?\s*(\d{5,6})", scope)
-        codes += re.findall(r"(?m)^\s*(\d{5,6})\s*:", scope)
+        """Program codes headed 'NNNNNN:' or 'תכנית NNNNNN -' (21547) in the given text, in the order
+        they appear, de-duplicated. The colon or dash is what makes a heading: a bare
+        'תוכנית NNNNNN' at a line's end also opens the committee's questions after the narrative."""
+        heading = rf"{PROGRAM_HEADING}|תו?כנית\s*(\d{{5,6}})\s+[-–]"
+        codes = [m.group(1) or m.group(2) for m in re.finditer(heading, scope)]
         return ", ".join(dict.fromkeys(codes))
 
     @staticmethod
@@ -209,19 +279,3 @@ class Extractor:
             a, b = m.group(1), m.group(2)
             return f"{b}-{a}" if len(a) == 3 and len(b) == 2 else f"{a}-{b}"
         return re.sub(r"(\d{2,3})-(\d{2,3})", fix, value)
-
-    # ------------------------------------------------------- table + master
-    def _table(self, letter):
-        """The combined budget table + a `master` column and the matched codes."""
-        table = letter.extract_combined_table().copy()
-        table[MASTER_COLUMN] = [
-            "כן" if self._normalize(c) in self.master else "לא"
-            for c in table[CODE_COLUMN]
-        ]
-        matched = {self._normalize(c) for c in table[CODE_COLUMN]} & self.master
-        return table, matched
-
-    @staticmethod
-    def _normalize(code) -> str:
-        """A program code as a zero-padded 6-digit string (matches the master set)."""
-        return str(code).strip().zfill(6)

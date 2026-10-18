@@ -8,7 +8,6 @@ export type Scan = {
   failed?: number;
   emails_sent?: number;
 };
-export type FailedLetter = { slug: string; reason: string; scanned_at: string };
 export type FailedRun = {
   id: number;
   day: string;
@@ -21,6 +20,5 @@ export type FailedRun = {
 export type Status = {
   latest_scan: Scan | null;
   next_scheduled_send_day: string | null;
-  failed_letters: FailedLetter[];
   failed_send_run: FailedRun | null;
 };

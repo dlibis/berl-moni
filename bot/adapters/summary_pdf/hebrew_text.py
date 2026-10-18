@@ -4,6 +4,7 @@
     rtl(text)              one line, reordered for display
     fix_split_words(text)  repairs words the source PDF's text layer split in two
     wrap_rtl_html(...)     a multi-line paragraph, wrapped first and reordered per line
+    wrap(...)              one logical line split into rows that fit a width (not reordered)
 """
 import re
 from xml.sax.saxutils import escape
@@ -46,7 +47,7 @@ def wrap_rtl_html(text: str, max_width: float, font: str, size: int = 11, bold_l
     html_rows = []
     for line in str(text).split("\n"):
         label = _section_label(line) if bold_labels else None
-        for i, row in enumerate(_wrap(line, usable, font, size)):
+        for i, row in enumerate(wrap(line, usable, font, size)):
             html = escape(rtl(row))
             if label and i == 0:  # the label opens the line, so it is on its first row
                 shown = escape(rtl(label))
@@ -55,7 +56,7 @@ def wrap_rtl_html(text: str, max_width: float, font: str, size: int = 11, bold_l
     return "<br/>".join(html_rows)
 
 
-def _wrap(line: str, width: float, font: str, size: int) -> list[str]:
+def wrap(line: str, width: float, font: str, size: float) -> list[str]:
     """Greedy word wrap of one logical line, by measured width."""
     rows, current = [], ""
     for word in line.split(" "):

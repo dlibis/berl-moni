@@ -11,6 +11,7 @@ from bot.adapters.letter_pdf.loader import open_letter
 from bot.adapters.letter_pdf.reader import PdfDocument
 from bot.domain.errors import ExtractionError, NoTextError
 from bot.domain.extraction import Extractor
+from bot.domain.request_fields import ProgramUses, Use
 
 FILES = Path(__file__).parent / "test_files"
 MASTER = {"384001", "045211", "045110", "045203", "045212", "045213", "046303", "046401"}
@@ -21,7 +22,7 @@ CALLS = []  # every region the fake model was asked about, reset per test by `ca
 
 def fake_analyze(region):
     CALLS.append(region)
-    return "לא", "סיכום", None
+    return "לא", [ProgramUses(code="000001", uses=[Use(text="סיכום")])], None
 
 
 @pytest.fixture
@@ -49,16 +50,16 @@ def _extract(name):
     "pending_230_heading_variant.pdf", "pending_206_213_heading_variant.pdf"])
 def test_heading_variants_found_with_narrative(calls, name):
     result = _extract(name)
-    assert result.relevant and not result.scanned
+    assert result.relevant_to(MASTER) and not result.scanned
     assert len(calls) == 1 and calls[0].strip()
-    assert result.fields.request_summary == "סיכום"
+    assert result.fields.uses("000001")[0].text == "סיכום"
 
 
 @pytest.mark.parametrize("name", [
     "pending_170_171_not_relevant.pdf", "pending_21_not_relevant.pdf"])
 def test_irrelevant_letter_makes_no_llm_call(calls, name):
     result = _extract(name)
-    assert not result.relevant
+    assert not result.relevant_to(MASTER) and not result.complete
     assert calls == []
 
 
@@ -86,8 +87,8 @@ def test_arithmetic_passes_on_real_letters(name):
 
 def test_scan_is_ocrd_marked_and_relevant_by_table_codes(calls, scan_md):
     result = _extract("pending_199_201_scan.pdf")
-    assert result.scanned and result.relevant
-    assert result.matched_codes <= MASTER and result.matched_codes
+    assert result.scanned and result.relevant_to(MASTER)
+    assert result.matched(MASTER)
     assert len(calls) == 1 and calls[0].strip()
 
 
@@ -101,7 +102,7 @@ def test_scan_ocr_with_no_text_is_no_text_error(monkeypatch):
 def test_scan_with_unbalanced_rows_still_extracts(calls, scan_md, monkeypatch):
     monkeypatch.setattr("bot.adapters.letter_pdf.parser.BudgetLetter.arithmetic_failures", lambda self: ["045203"])
     result = _extract("pending_199_201_scan.pdf")
-    assert result.scanned and result.relevant  # OCR'd tables can't be checked; the PDF says 'verify'
+    assert result.scanned and result.relevant_to(MASTER)  # OCR'd tables can't be checked; the PDF says 'verify'
 
 
 def test_scan_table_codes_come_from_table_rows_only(monkeypatch):
@@ -109,7 +110,7 @@ def test_scan_table_codes_come_from_table_rows_only(monkeypatch):
     monkeypatch.setattr(PdfDocument, "scanned", True)
     monkeypatch.setattr(PdfDocument, "markdown", md)
     table = open_letter("x.pdf").extract_combined_table()
-    assert list(table["number"]) == ["045203", "045212"]
+    assert table.column("number") == ["045203", "045212"]
 
 
 def test_scan_trailing_minus_is_moved_in_front(monkeypatch):

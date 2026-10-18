@@ -1,7 +1,7 @@
 """Unit of Work (Cosmic Python ch. 6): one Postgres connection, and the only place that commits.
 
     with UnitOfWork() as uow:
-        uow.letters.insert(url, "pending", pdf=pdf)
+        uow.letters.upsert_feed(letters, auto=False)
         uow.commit()            # anything not committed is rolled back on exit
 
 The services see one repository per table (uow.letters, .send_runs, .email_log, .scans) and a few
@@ -11,7 +11,7 @@ from bot.adapters.postgres.email_log import EmailLogRepository
 from bot.adapters.postgres.letters import LettersRepository
 from bot.adapters.postgres.scans import ScansRepository
 from bot.adapters.postgres.send_runs import SendRunsRepository
-from common.db import connect, get_setting, list_emails, load_programs
+from common.db import connect, get_setting, list_emails, load_programs, set_setting
 from common.schedule_due import due_day
 
 
@@ -39,6 +39,13 @@ class UnitOfWork:
 
     def setting(self, key: str, default=None):
         return get_setting(self.conn, key, default)
+
+    def set_setting(self, key: str, value) -> None:
+        set_setting(self.conn, key, value)
+
+    def db_now(self) -> str:
+        """Postgres' clock (ISO): what first_seen_at is stamped with, so comparisons with it are exact."""
+        return self.conn.execute("SELECT now() AS now").fetchone()["now"].isoformat()
 
     def mailing_list(self) -> list[str]:
         return list_emails(self.conn)

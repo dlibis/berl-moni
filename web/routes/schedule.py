@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from common.db import connect, get_setting, list_emails, set_setting
 from common.limits import projected_monthly_emails
-from common.schedule_due import DAY_KEYS
+from common.schedule_due import DAY_KEYS, schedule_configured
 from web.auth import require_session
 
 schedule_bp = Blueprint("schedule", __name__, url_prefix="/api/v1/schedule")
@@ -58,5 +58,9 @@ def set_schedule():
     if not _valid(schedule):
         return jsonify({"error": "invalid schedule"}), 400
     with connect() as conn:
+        was_on = schedule_configured(get_setting(conn, "schedule", []))
         set_setting(conn, "schedule", schedule)
+        if schedule_configured(schedule) != was_on:
+            db_now = conn.execute("SELECT now() AS now").fetchone()["now"]  # the clock first_seen_at uses
+            set_setting(conn, "auto_since", db_now.isoformat() if not was_on else None)
     return jsonify({"schedule": schedule})
