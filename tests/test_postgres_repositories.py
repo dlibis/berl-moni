@@ -6,6 +6,9 @@ from bot.adapters.postgres.email_log import EmailLogRepository
 from bot.adapters.postgres.letters import LettersRepository
 from bot.adapters.postgres.scans import ScansRepository
 from bot.adapters.postgres.send_runs import SendRunsRepository
+from bot.domain.extraction import Extraction
+from bot.domain.feed import FeedLetter
+from bot.tests.fixtures.extractions import complete_extraction, irrelevant_extraction
 from common.db import connect
 
 DAY = datetime.date(2026, 10, 18)
@@ -19,29 +22,45 @@ def conn(test_db_url):
         conn.rollback()
 
 
-def test_letters_roundtrip_and_pending_order(conn):
-    LettersRepository(conn).insert("https://x/b.pdf", "pending", pdf=b"b")
-    LettersRepository(conn).insert("https://x/a.pdf", "pending", pdf=b"aa")
-    LettersRepository(conn).insert("https://x/c.pdf", "irrelevant")
-    LettersRepository(conn).insert("https://x/d.pdf", "failed", reason="quota")
-    conn.execute("UPDATE letters SET scanned_at = '2026-10-18 10:00:00+00'")  # same second: url breaks the tie
-    assert LettersRepository(conn).known_urls() == {f"https://x/{c}.pdf" for c in "abcd"}
-    pending = LettersRepository(conn).pending()
-    assert [p["letter_url"] for p in pending] == ["https://x/a.pdf", "https://x/b.pdf"]
-    assert [p["pdf_bytes"] for p in pending] == [2, 1]
+def insert_legacy(conn, url: str, pdf: bytes = b"p") -> None:
+    """A `pending` row as the job wrote it before analysis_status (summary PDF stored, no extraction)."""
+    conn.execute("INSERT INTO letters (letter_url, slug, status, summary_pdf, pdf_bytes) VALUES (%s, %s, 'pending', %s, %s)",
+                 (url, url, pdf, len(pdf)))
+
+
+def analyzed(conn, url: str, extraction: Extraction) -> None:
+    letters = LettersRepository(conn)
+    letters.upsert_feed([FeedLetter(url, None, "", (), ())], auto=True)
+    claimed = letters.claim()
+    assert letters.finish_analysis(url, claimed["lease_id"], extraction.to_json(), "m|prompt:1|schema:1",
+                                   sorted(extraction.codes()), "ab", 3)
+
+
+def test_auto_eligible_is_analyzed_complete_relevant_unsent_and_recent(conn):
+    conn.execute("TRUNCATE programs")
+    conn.execute("INSERT INTO programs (code, name) VALUES ('200102', 'p')")
+    incomplete = Extraction(source="x", table=complete_extraction().table)  # relevant, but the LLM part never ran
+    for url, extraction in [("https://x/b.pdf", complete_extraction()), ("https://x/a.pdf", complete_extraction()),
+                            ("https://x/sent.pdf", complete_extraction()), ("https://x/old.pdf", complete_extraction()),
+                            ("https://x/irrelevant.pdf", irrelevant_extraction()), ("https://x/incomplete.pdf", incomplete)]:
+        analyzed(conn, url, extraction)
+    LettersRepository(conn).upsert_feed([FeedLetter("https://x/discovered.pdf", None, "", (), ())], auto=False)
+    conn.execute("UPDATE letters SET first_seen_at = '2026-10-18 10:00:00+00'")  # same second: url breaks the tie
+    conn.execute("UPDATE letters SET first_seen_at = '2026-10-17 10:00:00+00' WHERE letter_url = 'https://x/old.pdf'")
+    LettersRepository(conn).mark_delivered(["https://x/sent.pdf"])
+    assert LettersRepository(conn).auto_eligible("2026-10-18T00:00:00+00:00") == ["https://x/a.pdf", "https://x/b.pdf"]
+    assert LettersRepository(conn).auto_eligible(None) == ["https://x/old.pdf", "https://x/a.pdf", "https://x/b.pdf"]
+
+
+def test_legacy_summary_pdfs_load_in_order(conn):
+    insert_legacy(conn, "https://x/b.pdf", b"b")
+    insert_legacy(conn, "https://x/a.pdf", b"aa")
     assert LettersRepository(conn).load_pdfs(["https://x/b.pdf", "https://x/a.pdf"]) == [b"b", b"aa"]
-
-
-def test_mark_seen_skips_existing(conn):
-    LettersRepository(conn).insert("https://x/a.pdf", "pending", pdf=b"a")
-    LettersRepository(conn).mark_seen(["https://x/a.pdf", "https://x/b.pdf"])
-    rows = {r["letter_url"]: r["status"] for r in conn.execute("SELECT letter_url, status FROM letters")}
-    assert rows == {"https://x/a.pdf": "pending", "https://x/b.pdf": "sent"}
 
 
 def test_run_lifecycle_and_finish(conn):
     for u in ("a", "b", "c"):
-        LettersRepository(conn).insert(f"https://x/{u}.pdf", "pending", pdf=b"p")
+        insert_legacy(conn, f"https://x/{u}.pdf")
     assert SendRunsRepository(conn).find_open() is None
     run_id = SendRunsRepository(conn).start(DAY, "from@berl.site", "reply@example.com", ["one@example.com"],
                                   [["https://x/a.pdf", "https://x/b.pdf"]])
@@ -59,20 +78,20 @@ def test_run_lifecycle_and_finish(conn):
     assert (run["status"], run["recipients"]) == ("sent", None) and run["finished_at"]
     sent = {r["letter_url"]: r["send_run_id"] for r in conn.execute("SELECT * FROM letters WHERE status = 'sent'")}
     assert sent == {"https://x/a.pdf": run_id, "https://x/b.pdf": run_id}
-    assert [p["letter_url"] for p in LettersRepository(conn).pending()] == ["https://x/c.pdf"]
+    assert [r["letter_url"] for r in conn.execute("SELECT letter_url FROM letters WHERE status = 'pending'")] == \
+        ["https://x/c.pdf"]
     assert not SendRunsRepository(conn).finish(run_id)  # no longer sending
     assert SendRunsRepository(conn).find_open() is None
 
 
 def test_failed_run_blocks_finish_and_is_open(conn):
-    LettersRepository(conn).insert("https://x/a.pdf", "pending", pdf=b"p")
+    insert_legacy(conn, "https://x/a.pdf")
     run_id = SendRunsRepository(conn).start(DAY, "from@berl.site", "reply@example.com", ["one@example.com"],
                                   [["https://x/a.pdf"]])
     SendRunsRepository(conn).mark_failed(run_id, "ConnectionError")
     run = SendRunsRepository(conn).find_open()
     assert (run["status"], run["error"]) == ("failed", "ConnectionError") and run["failed_at"]
     assert not SendRunsRepository(conn).finish(run_id)
-    assert len(LettersRepository(conn).pending()) == 1
 
 
 def test_email_log_counts_use_utc_day_and_month(conn):

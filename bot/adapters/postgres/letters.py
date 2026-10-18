@@ -1,5 +1,5 @@
-"""LettersRepository: the `letters` table — one row per feed letter the job has seen, with its status
-(pending / irrelevant / failed / sent), the failure reason and the rendered summary PDF.
+"""LettersRepository: the `letters` table — one row per feed letter, with its feed metadata, the saved
+analysis (extraction JSON) and a delivery summary. Legacy rows keep their status and summary PDF.
 
 It is also the analysis queue: `analysis_status` is the state, and a worker holds a letter through a
 30-minute lease (`lease_id`); only the lease holder may write the result."""
@@ -9,7 +9,6 @@ from uuid import UUID, uuid4
 from psycopg.types.json import Jsonb
 
 from bot.domain.feed import FeedLetter
-from bot.domain.statuses import LetterReason, LetterStatus
 
 
 def slug_for(url: str) -> str:
@@ -21,28 +20,14 @@ class LettersRepository:
     def __init__(self, conn):
         self.conn = conn
 
-    def known_urls(self) -> set[str]:
-        return {r["letter_url"] for r in self.conn.execute("SELECT letter_url FROM letters")}
-
-    def insert(self, url: str, status: LetterStatus, reason: LetterReason | None = None,
-               pdf: bytes | None = None, pdf_bytes: int | None = None, slug: str | None = None) -> None:
-        """One row per scanned letter. `pdf` is the rendered summary; pdf_bytes defaults to its length."""
-        if pdf_bytes is None and pdf is not None:
-            pdf_bytes = len(pdf)
-        self.conn.execute("INSERT INTO letters (letter_url, slug, status, reason, summary_pdf, pdf_bytes) "
-                          "VALUES (%s, %s, %s, %s, %s, %s)",
-                          (url, slug or slug_for(url), status, reason, pdf, pdf_bytes))
-
-    def mark_seen(self, urls) -> None:
-        """Record feed URLs as already sent, without scanning them."""
-        self.conn.cursor().executemany("INSERT INTO letters (letter_url, slug, status, sent_at) VALUES (%s, %s, 'sent', now()) "
-                                       "ON CONFLICT (letter_url) DO NOTHING", [(u, slug_for(u)) for u in urls])
-
-    def pending(self) -> list[dict]:
-        """Pending letters, oldest first; letter_url breaks ties between letters scanned in the same second.
-        No PDF bytes: load them per batch with load_pdfs()."""
-        return list(self.conn.execute("SELECT letter_url, slug, pdf_bytes, scanned_at FROM letters "
-                                      "WHERE status = 'pending' ORDER BY scanned_at, letter_url"))
+    def auto_eligible(self, auto_since: str | None) -> list[str]:
+        """What the auto job sends: analyzed, complete, relevant to the current programs, never sent, and
+        first seen at or after `auto_since` (None: any time). Oldest first; letter_url breaks ties."""
+        return [r["letter_url"] for r in self.conn.execute(
+            "SELECT letter_url FROM letters WHERE analysis_status = 'analyzed' AND send_count = 0 "
+            "AND jsonb_typeof(extraction->'fields') = 'object' AND codes && ARRAY(SELECT code FROM programs) "
+            "AND first_seen_at >= coalesce(%s::timestamptz, '-infinity') ORDER BY first_seen_at, letter_url",
+            (auto_since,))]
 
     def load_pdfs(self, urls) -> list[bytes]:
         """Summary PDFs in the order of `urls`."""
@@ -55,11 +40,6 @@ class LettersRepository:
         rows = {r["letter_url"]: r["extraction"] for r in self.conn.execute(
             "SELECT letter_url, extraction FROM letters WHERE letter_url = ANY(%s)", (list(urls),))}
         return [rows.get(u) for u in urls]
-
-    def mark_failed(self, url: str, reason: LetterReason) -> None:
-        """Take a letter out of the send set (e.g. a PDF over the batch limit)."""
-        self.conn.execute("UPDATE letters SET status = 'failed', reason = %s, summary_pdf = NULL, pdf_bytes = NULL "
-                          "WHERE letter_url = %s", (reason, url))
 
     def mark_sent(self, urls, run_id: int) -> None:
         """The pending letters among `urls` -> sent by run `run_id`."""
