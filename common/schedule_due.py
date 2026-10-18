@@ -49,13 +49,21 @@ def resume_requested(conn) -> bool:
     return conn.execute("SELECT 1 FROM send_runs WHERE status = 'sending' AND resume_requested_at IS NOT NULL").fetchone() is not None
 
 
+def has_queued(conn) -> bool:
+    """True if a letter waits for analysis or its analysis lease expired (same SQL as LettersRepository.has_queued)."""
+    return conn.execute("SELECT EXISTS (SELECT 1 FROM letters WHERE analysis_status = 'queued' "
+                        "OR (analysis_status = 'analyzing' AND lease_expires_at < now())) AS queued").fetchone()["queued"]
+
+
 def main() -> None:
-    """Prints exactly due=true or due=false, for `>> $GITHUB_OUTPUT` in letters.yml."""
+    """Prints due=<bool> and queued=<bool> lines, for `>> $GITHUB_OUTPUT` in letters.yml."""
     with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as conn:
         row = conn.execute("SELECT value FROM settings WHERE key = 'schedule'").fetchone()
         schedule = row["value"] if row else []
         due = due_day(datetime.now(timezone.utc), schedule, conn) is not None or resume_requested(conn)
+        queued = has_queued(conn)
     print(f"due={str(due).lower()}")
+    print(f"queued={str(queued).lower()}")
 
 
 if __name__ == "__main__":
