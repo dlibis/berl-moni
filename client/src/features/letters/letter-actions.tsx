@@ -23,6 +23,13 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
   const canReanalyze = analyzed || letter.legacy;
   const canSend =
     analyzed && letter.relevant && letter.complete && !letter.legacy;
+  const sendBlocker = !analyzed
+    ? "יש לנתח את המכתב לפני שליחה"
+    : letter.legacy
+      ? "יש לנתח מחדש לפני שליחה"
+      : !letter.relevant
+        ? "המכתב לא רלוונטי"
+        : "הניתוח לא הושלם";
   const sendNow = (resend = false) =>
     send.mutate(
       { slug, resend },
@@ -66,25 +73,23 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
           />
         </AlertDialog>
       ) : null}
-      {canSend ? (
-        <>
-          <Button
-            size="sm"
-            disabled={send.isPending}
-            onClick={() =>
-              letter.send_count > 0 ? setConfirmSend(true) : sendNow()
-            }
-          >
-            שליחה
-          </Button>
-          <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
-            <SendConfirmDialog
-              pending={send.isPending}
-              onConfirm={() => sendNow(true)}
-            />
-          </AlertDialog>
-        </>
-      ) : null}
+      <span title={canSend ? undefined : sendBlocker}>
+        <Button
+          size="sm"
+          disabled={!canSend || send.isPending}
+          onClick={() =>
+            letter.send_count > 0 ? setConfirmSend(true) : sendNow()
+          }
+        >
+          שליחה
+        </Button>
+      </span>
+      <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
+        <SendConfirmDialog
+          pending={send.isPending}
+          onConfirm={() => sendNow(true)}
+        />
+      </AlertDialog>
     </div>
   );
 }
