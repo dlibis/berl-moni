@@ -11,7 +11,7 @@ from bot.adapters.postgres.email_log import EmailLogRepository
 from bot.adapters.postgres.letters import LettersRepository
 from bot.adapters.postgres.scans import ScansRepository
 from bot.adapters.postgres.send_runs import SendRunsRepository
-from common.db import connect, get_setting, list_emails, load_programs
+from common.db import connect, get_setting, list_emails, load_programs, set_setting
 from common.schedule_due import due_day
 
 
@@ -39,6 +39,9 @@ class UnitOfWork:
 
     def setting(self, key: str, default=None):
         return get_setting(self.conn, key, default)
+
+    def set_setting(self, key: str, value) -> None:
+        set_setting(self.conn, key, value)
 
     def mailing_list(self) -> list[str]:
         return list_emails(self.conn)

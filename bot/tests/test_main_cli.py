@@ -196,9 +196,9 @@ def test_failures_are_recorded_and_the_run_continues(db, stubs, error, reason):
     assert stubs.scanned == [A, B]
 
 
-def test_unexpected_error_is_recorded_and_the_other_letter_is_sent(db, stubs):
+def test_unexpected_error_is_recorded_the_other_letter_is_sent_and_the_job_fails(db, stubs):
     stubs.urls, stubs.outcomes = [A, B], {A: KeyError("bug")}
-    assert run(stubs) == 0
+    assert run(stubs) == 1  # a bug must turn the GitHub run red
     assert statuses(db) == {A: ("failed", "extract_error", 0), B: ("analyzed", None, 1)}
     assert len(stubs.sent) == 1 and stubs.scanned == [A, B]
     [scan] = rows(db, "SELECT * FROM scans")
@@ -358,12 +358,13 @@ def test_letters_discovered_before_auto_since_are_not_sent(db, stubs):
     assert (scan["status"], scan["letters_in_feed"], scan["new_letters"]) == ("nothing_new", 2, 0)
 
 
-def test_without_auto_since_nothing_is_auto_sent(db, stubs):
-    with connect(db) as conn:
+def test_first_due_run_without_auto_since_sets_it_and_sends_new_letters(db, stubs):
+    with connect(db) as conn:  # a schedule saved before auto_since existed
         conn.execute("DELETE FROM settings WHERE key = 'auto_since'")
     stubs.urls = [A]
     assert run(stubs) == 0
-    assert statuses(db) == {A: ("analyzed", None, 0)} and stubs.sent == []
+    assert statuses(db) == {A: ("analyzed", None, 1)} and len(stubs.sent) == 1
+    assert rows(db, "SELECT value FROM settings WHERE key = 'auto_since'")[0]["value"]
 
 
 def test_queued_letters_drain_even_when_not_due(db, stubs):

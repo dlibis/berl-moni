@@ -229,26 +229,26 @@ def send_job(uow, ports: Ports) -> int:
         return finish_scan(uow, day, "failed", problem)
 
     from bot.service_layer.analysis import drain_queue, refresh_feed  # analysis imports this module
+    if uow.setting("auto_since") is None:  # a schedule saved before auto_since existed: auto mode starts now
+        uow.set_setting("auto_since", now.isoformat())
+        uow.commit()
     try:
         refreshed = refresh_feed(uow, ports.feed, auto=True)
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return finish_scan(uow, day, "failed", "feed_unreachable")
-    drain_queue(uow, ports.extractor, ports.model)
-    auto_since = uow.setting("auto_since")
-    if auto_since is None:  # the schedule was set before auto_since existed: turn it off and on again
-        logger.warning("settings.auto_since is not set: no letter is sent automatically")
-    urls = uow.letters.auto_eligible(auto_since) if auto_since else []
+    broken = drain_queue(uow, ports.extractor, ports.model).unexpected  # the run sends, then fails
+    urls = uow.letters.auto_eligible(uow.setting("auto_since"))
     stats = ScanCounts(letters_in_feed=refreshed.new + refreshed.seen, new_letters=refreshed.new,
                        relevant=len(urls), failed=0)
-    sizes, render_failed = [], False
+    sizes = []
     for url in urls:
         try:
             [(_, pdf)] = attachments(uow, ports, [url])  # for its size; deliver renders it again to send
         except Exception:  # noqa: BLE001 - one bad render must not stop the run
             logger.exception("%s: summary PDF failed", letter_slug(url))
             stats["failed"] += 1
-            render_failed = True
+            broken = True
             continue
         sizes.append((url, len(pdf)))
     batches, oversized = plan.batches(sizes)
@@ -257,7 +257,7 @@ def send_job(uow, ports: Ports) -> int:
                 stats["letters_in_feed"], stats["new_letters"], stats["relevant"], stats["failed"])
     if not batches:
         code = finish_scan(uow, day, "nothing_new", **stats)
-        return 1 if render_failed else code
+        return 1 if broken else code
 
     chunks = plan.chunks(recipients)
     daily, reserve, monthly = limits(uow)
@@ -273,7 +273,7 @@ def send_job(uow, ports: Ports) -> int:
     run = SendRun(id=run_id, from_address=from_address, reply_to_address=reply_to,
                   recipients=recipients, batches=batch_urls)
     code = deliver(uow, ports, run, day, stats)
-    return 1 if render_failed else code
+    return 1 if broken else code
 
 
 def send_pending_test(uow, ports: Ports, address: str) -> int:

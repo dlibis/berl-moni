@@ -138,7 +138,7 @@ def test_newly_relevant_letter_needs_llm(uow, analyzed_irrelevant, add_program):
 
 
 def test_drain_analyzes_and_saves_json(uow, queued, fake_extractor):
-    assert drain_queue(uow, lambda programs: fake_extractor, "m") == 1
+    assert drain_queue(uow, lambda programs: fake_extractor, "m") == (1, False)
     row = uow.letters.get(queued)
     assert row["analysis_status"] == "analyzed" and row["extraction"]["schema_version"] == 1
     assert row["extraction_version"] == "m|prompt:1|schema:1" and row["codes"] == ["200101"]
@@ -185,12 +185,12 @@ def test_reanalysis_failure_keeps_old_json(uow, analyzed_complete, failing_extra
 
 
 def test_failure_without_old_json_is_failed_and_can_be_queued_again(uow, queued, failing_extractor):
-    assert drain_queue(uow, lambda p: failing_extractor, "m") == 0
+    assert drain_queue(uow, lambda p: failing_extractor, "m").analyzed == 0
     assert uow.letters.get(queued)["analysis_status"] == "failed"
     assert request_analysis(uow, queued, None, lambda: False) == ("queued", False)
 
 
 def test_quota_stops_the_drain(uow, two_queued, quota_extractor):
-    assert drain_queue(uow, lambda p: quota_extractor, "m") == 0
+    assert drain_queue(uow, lambda p: quota_extractor, "m") == (0, False)
     rows = [uow.letters.get(slug) for slug in two_queued]
     assert sorted((r["analysis_status"], r["last_error"]) for r in rows) == [("failed", "quota"), ("queued", None)]

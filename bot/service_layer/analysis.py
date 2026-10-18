@@ -55,13 +55,18 @@ def request_analysis(uow, slug: str, user: str | None, dispatch: Callable[[], bo
     return AnalysisRequest("queued", dispatch())
 
 
-def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], model: str) -> int:
+class DrainResult(NamedTuple):
+    analyzed: int
+    unexpected: bool  # an error that is a bug, not a letter we can't read: the job must fail
+
+
+def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], model: str) -> DrainResult:
     """Requeue expired leases, then claim and analyze letters until none is queued. A quota failure stops
-    the drain; the letters still queued wait for the next run. Returns the number of letters analyzed."""
+    the drain; the letters still queued wait for the next run."""
     uow.letters.requeue_expired()
     uow.commit()
     letter_extractor = extractor(uow.programs())
-    analyzed = 0
+    analyzed, unexpected = 0, False
     while (letter := uow.letters.claim()) is not None:
         uow.commit()
         url, lease = letter["letter_url"], letter["lease_id"]
@@ -71,6 +76,7 @@ def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], mod
             reason = failure_reason(error)
             if reason == "extract_error" and not isinstance(error, ExtractionError):
                 logger.exception("%s: failed unexpectedly", letter_slug(url))
+                unexpected = True
             else:
                 logger.warning("%s: failed (%s, %s)", letter_slug(url), reason, type(error).__name__)
             uow.letters.fail_analysis(url, lease, reason)
@@ -81,4 +87,4 @@ def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], mod
         analyzed += uow.letters.finish_analysis(url, lease, result.to_json(), analysis_version(model),
                                                 sorted(result.codes()), result.source_sha256, result.source_size)
         uow.commit()
-    return analyzed
+    return DrainResult(analyzed, unexpected)
