@@ -29,7 +29,8 @@ def key(monkeypatch):
 
 def test_success_posts_once_with_idempotency_key_and_base64(monkeypatch):
     calls = []
-    monkeypatch.setattr(email_sender.requests, "post", lambda url, **kw: calls.append((url, kw)) or Response(200))
+    monkeypatch.setattr(email_sender.requests, "post",
+                        lambda url, **kw: calls.append((url, kw)) or Response(200, {"id": "em_1"}))
     email_sender.send_email(**SEND)
     [(url, kw)] = calls
     assert url == "https://api.resend.com/emails"
@@ -37,6 +38,11 @@ def test_success_posts_once_with_idempotency_key_and_base64(monkeypatch):
     assert kw["headers"] == {"Authorization": "Bearer re_test", "Idempotency-Key": "run1-b0-c0"}
     assert kw["json"]["to"] == ["staff@example.com"] and kw["json"]["bcc"] == SEND["bcc"]
     assert kw["json"]["attachments"] == [{"filename": "letter.pdf", "content": base64.b64encode(b"%PDF-1").decode()}]
+
+
+def test_returns_resend_email_id(monkeypatch):
+    monkeypatch.setattr(email_sender.requests, "post", lambda *a, **kw: Response(200, {"id": "em_123"}))
+    assert email_sender.send_email(**SEND) == "em_123"
 
 
 def test_422_raises_without_address(monkeypatch, caplog):

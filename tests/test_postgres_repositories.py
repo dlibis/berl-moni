@@ -89,6 +89,16 @@ def test_email_log_counts_use_utc_day_and_month(conn):
     assert month == 5 + (0 if datetime.datetime.now(datetime.timezone.utc).day == 1 else 7)
 
 
+def test_email_log_start_complete_and_counts(conn):
+    log = EmailLogRepository(conn)
+    assert log.start("run1-b0-c0", "letter", 3)
+    assert not log.start("run1-b0-c0", "letter", 3)
+    assert log.counts() == (3, 3)
+    assert log.sent_keys(1) == set()
+    log.complete("run1-b0-c0", "em_1")
+    assert log.sent_keys(1) == {"run1-b0-c0"}
+
+
 def test_scan_rows_have_counts_only(conn):
     ScansRepository(conn).add(DAY, "failed", "quota", letters_in_feed=3, new_letters=2, relevant=1, failed=1)
     row = conn.execute("SELECT * FROM scans").fetchone()

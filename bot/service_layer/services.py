@@ -43,7 +43,7 @@ class LetterExtractor(Protocol):
 
 class SendEmail(Protocol):
     def __call__(self, *, from_address: str, reply_to: str, bcc: list[str], attachments: list[tuple[str, bytes]],
-                 subject: str, html: str, idempotency_key: str) -> None: ...
+                 subject: str, html: str, idempotency_key: str) -> str: ...
 
 
 @dataclass
@@ -164,8 +164,17 @@ def finish_scan(uow, day, status: ScanStatus, reason: ScanReason | None = None, 
     return 1 if status == "failed" else 0
 
 
-def attachments(uow, urls: list[str]) -> list[tuple[str, bytes]]:
-    return [(f"{letter_slug(u)}_summary.pdf", pdf) for u, pdf in zip(urls, uow.letters.load_pdfs(urls))]
+def attachments(uow, ports: Ports, urls: list[str]) -> list[tuple[str, bytes]]:
+    programs = uow.programs()
+    files = []
+    for url, saved in zip(urls, uow.letters.load_extractions(urls)):
+        if saved is None:
+            pdf = uow.letters.load_pdfs([url])[0]
+        else:
+            extraction = Extraction.from_json(saved)
+            pdf = ports.render(extraction, extraction.named_matches(programs))
+        files.append((f"{letter_slug(url)}_summary.pdf", pdf))
+    return files
 
 
 def deliver(uow, ports: Ports, run: SendRun, day, stats: ScanCounts, reason: ScanReason | None = None) -> int:
@@ -184,23 +193,28 @@ def deliver(uow, ports: Ports, run: SendRun, day, stats: ScanCounts, reason: Sca
                 uow.rollback()
                 logger.info("run %d is no longer sending, stopped", run_id)
                 return finish_scan(uow, day, "nothing_new", reason, emails_sent=emails, **stats)
-            files = files or attachments(uow, urls)
+            files = files or attachments(uow, ports, urls)
+            uow.email_log.start(key, "letter", len(bcc) + 1)
+            uow.commit()
             try:
-                ports.send_email(from_address=run["from_address"], reply_to=run["reply_to_address"], bcc=bcc,
-                           attachments=files, subject=EMAIL_SUBJECT, html=EMAIL_HTML, idempotency_key=key)
+                resend_email_id = ports.send_email(
+                    from_address=run["from_address"], reply_to=run["reply_to_address"], bcc=bcc,
+                    attachments=files, subject=EMAIL_SUBJECT, html=EMAIL_HTML, idempotency_key=key)
             except Exception as error:  # noqa: BLE001 - any send failure parks the run for a person
                 name = error.name if isinstance(error, ResendError) else type(error).__name__
                 logger.error("run %d: send failed (HTTP %s, %s)", run_id, getattr(error, "status", None), name)
                 uow.send_runs.mark_failed(run_id, name)
                 return finish_scan(uow, day, "failed", "resend_error", emails_sent=emails, **stats)
-            uow.email_log.add(key, "letter", len(bcc) + 1)
+            uow.email_log.complete(key, resend_email_id)
             uow.commit()
             emails += len(bcc) + 1
             messages += 1
     if not uow.send_runs.finish(run_id):
         uow.rollback()
         return finish_scan(uow, day, "nothing_new", reason, emails_sent=emails, **stats)
-    uow.letters.mark_sent([url for urls in run["batches"] for url in urls], run_id)
+    delivered = [url for urls in run["batches"] for url in urls]
+    uow.letters.mark_delivered(delivered)
+    uow.letters.mark_sent(delivered, run_id)  # legacy rows during the expand/contract migration
     logger.info("run %d: sent %d messages", run_id, messages)
     return finish_scan(uow, day, "sent", reason, emails_sent=emails, **stats)
 
@@ -208,6 +222,10 @@ def deliver(uow, ports: Ports, run: SendRun, day, stats: ScanCounts, reason: Sca
 def resume_run(uow, ports: Ports, run: dict, today) -> int:
     """Step 1: a run found `sending` or `failed` at the start of the job."""
     run_id = run["id"]
+    expired = uow.email_log.expire_stale()
+    if any(key.startswith(f"run{run_id}-b") for key in expired):
+        uow.send_runs.mark_failed(run_id, "send_unknown")
+        return finish_scan(uow, today, "failed", "send_run_stuck")
     if run["status"] == "failed":  # waiting for a person
         return finish_scan(uow, today, "failed", "send_run_stuck")
     if run["resume_requested_at"] is None:  # the job that started it died mid-send
@@ -224,6 +242,7 @@ def resume_run(uow, ports: Ports, run: dict, today) -> int:
     needed = sum(len(chunk) + 1 for b in range(len(run["batches"])) for c, chunk in enumerate(chunks)
                  if plan.idempotency_key(run_id, b, c) not in done)
     daily, reserve, monthly = limits(uow)
+    uow.send_runs.lock_budget()
     sent_today, sent_month = uow.email_log.counts()
     if not plan.within_budget(needed, sent_today, sent_month, daily, reserve, monthly):
         uow.send_runs.mark_failed(run_id, "over_budget")
@@ -293,6 +312,7 @@ def send_job(uow, ports: Ports) -> int:
 
     chunks = plan.chunks(recipients)
     daily, reserve, monthly = limits(uow)
+    uow.send_runs.lock_budget()
     sent_today, sent_month = uow.email_log.counts()
     kept = plan.fit_budget(batches, chunks, sent_today, sent_month, daily, reserve, monthly)
     if not kept:
@@ -330,7 +350,7 @@ def send_pending_test(uow, ports: Ports, address: str) -> int:
         key = f"test-{uuid.uuid4()}"
         try:
             ports.send_email(from_address=from_address, reply_to=address, bcc=[],
-                             attachments=attachments(uow, [url for url, _ in batch]),
+                             attachments=attachments(uow, ports, [url for url, _ in batch]),
                              subject=EMAIL_SUBJECT, html=EMAIL_HTML, idempotency_key=key)
         except ResendError as error:
             logger.error("test send failed (HTTP %s, %s)", error.status, error.name)

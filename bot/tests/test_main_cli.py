@@ -9,6 +9,7 @@ import requests
 
 from bot.adapters.postgres.email_log import EmailLogRepository
 from bot.adapters.postgres.letters import LettersRepository
+from bot.adapters.postgres.send_runs import SendRunsRepository
 from bot.domain.errors import DownloadError, ExtractionError, FeedUnreachable, NoTextError, ResendError
 from bot.domain.feed import FeedLetter
 from bot.entrypoints import main
@@ -65,6 +66,7 @@ class Stubs:
         if self.fail_call == len(self.sent) + 1:
             raise ResendError(422, "validation_error")
         self.sent.append(kwargs)
+        return f"em_{len(self.sent)}"
 
     @staticmethod
     def render(result, programs):
@@ -237,7 +239,8 @@ def test_chunk_two_failure_parks_the_run_and_resume_sends_only_chunk_two(db, stu
     assert run(stubs) == 1
     [r] = rows(db, "SELECT * FROM send_runs")
     assert (r["status"], r["error"]) == ("failed", "validation_error") and r["failed_at"] is not None
-    assert [k["idempotency_key"] for k in rows(db, "SELECT * FROM email_log")] == ["run1-b0-c0"]
+    assert [(k["idempotency_key"], k["status"]) for k in rows(db, "SELECT * FROM email_log ORDER BY idempotency_key")] == \
+        [("run1-b0-c0", "sent"), ("run1-b0-c1", "sending")]
     assert [x["status"] for x in rows(db, "SELECT * FROM letters")] == ["pending"]
     assert rows(db, "SELECT reason FROM scans")[0]["reason"] == "resend_error"
 
@@ -257,6 +260,38 @@ def test_chunk_two_failure_parks_the_run_and_resume_sends_only_chunk_two(db, stu
         ["run1-b0-c0", "run1-b0-c1"]
     assert rows(db, "SELECT status FROM send_runs")[0]["status"] == "sent"
     assert rows(db, "SELECT status FROM letters")[0]["status"] == "sent"
+
+
+def test_stale_sending_row_becomes_unknown_and_parks_run(db, stubs):
+    with connect(db) as conn:
+        LettersRepository(conn).insert(A, "pending", pdf=b"%PDF a")
+        run_id = SendRunsRepository(conn).start(
+            services.datetime.now().date(), FROM, REPLY, LIST, [[A]])
+        EmailLogRepository(conn).start(f"run{run_id}-b0-c0", "letter", len(LIST) + 1)
+        conn.execute("UPDATE email_log SET started_at = now() - interval '25 hours'")
+        conn.execute("UPDATE send_runs SET resume_requested_at = now() WHERE id = %s", (run_id,))
+
+    assert run(stubs) == 1
+    assert rows(db, "SELECT status FROM email_log")[0]["status"] == "unknown"
+    assert rows(db, "SELECT status, error FROM send_runs")[0] == {"status": "failed", "error": "send_unknown"}
+    assert stubs.sent == []
+
+
+def test_crash_after_start_retries_same_key(db, stubs):
+    with connect(db) as conn:
+        LettersRepository(conn).insert(A, "pending", pdf=b"%PDF a")
+        run_id = SendRunsRepository(conn).start(
+            services.datetime.now().date(), FROM, REPLY, LIST, [[A]])
+        key = f"run{run_id}-b0-c0"
+        EmailLogRepository(conn).start(key, "letter", len(LIST) + 1)
+        conn.execute("UPDATE email_log SET started_at = now() - interval '1 hour'")
+        conn.execute("UPDATE send_runs SET resume_requested_at = now() WHERE id = %s", (run_id,))
+
+    assert run(stubs) == 0
+    assert [message["idempotency_key"] for message in stubs.sent] == [key]
+    assert rows(db, "SELECT status, resend_email_id FROM email_log")[0] == {
+        "status": "sent", "resend_email_id": "em_1"}
+    assert rows(db, "SELECT status FROM send_runs")[0]["status"] == "sent"
 
 
 def test_sending_run_without_resume_request_is_job_died(db, stubs):
