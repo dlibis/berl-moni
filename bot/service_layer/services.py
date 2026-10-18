@@ -3,10 +3,11 @@
 Each use case takes a UnitOfWork and the Ports it needs — no globals, no environment, no SQL — and
 returns the process exit code. bot.bootstrap builds the real Ports; the tests pass fakes.
 
-send_job (spec steps 1-12): resume a stuck run, check the schedule and settings, read the feed, scan
-new letters (one `letters` row each, committed right away), batch the pending PDFs, check the email
-budget, then send (batch, chunk) messages in order and finish the run. Every exit after the schedule
-check writes one `scans` row; a failed scan exits non-zero. Logs carry counts only, never an address.
+send_job (spec steps 1-12): resume a stuck run, check the schedule and settings, read the feed (new
+letters are queued), drain the analysis queue, render the letters due for an auto send from their saved
+extraction, check the email budget, then send (batch, chunk) messages in order and finish the run. Every
+exit after the schedule check writes one `scans` row; a failed scan exits non-zero. Logs carry counts
+only, never an address.
 """
 import logging
 import re
@@ -15,7 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, NamedTuple, Protocol, TypedDict
+from typing import Callable, Protocol, TypedDict
 
 import requests
 
@@ -24,7 +25,7 @@ from bot.domain.errors import DownloadError, ExtractionError, FeedUnreachable, N
 from bot.domain.extraction import Extraction
 from bot.domain.feed import FeedLetter
 from bot.domain.slug import letter_slug
-from bot.domain.statuses import LetterReason, LetterStatus, ScanReason, ScanStatus
+from bot.domain.statuses import LetterReason, ScanReason, ScanStatus
 from common.limits import list_cap
 from common.schedule_due import ISRAEL
 
@@ -55,6 +56,7 @@ class Ports:
     send_email: SendEmail                                         # resend.email_sender.send_email
     save_copy: Callable[[str, Path], None]                        # letter_pdf.download.save_copy (--no-email)
     now: Callable[[], datetime] = field(default=lambda: datetime.now(timezone.utc))
+    model: str = ""                                               # the configured model, for analysis_version
 
 
 class SendRun(TypedDict):
@@ -75,21 +77,6 @@ class ScanCounts(TypedDict, total=False):
     emails_sent: int
 
 
-@dataclass
-class Scan:
-    """One letter's scan result, and the summary PDF if it is pending (relevant and rendered)."""
-    status: LetterStatus
-    reason: LetterReason | None = None
-    pdf: bytes | None = None
-    unexpected: bool = False
-
-
-class ScanNewLettersResult(NamedTuple):
-    """Whether scanning stopped on quota or encountered an unexpected error."""
-    quota: bool
-    unexpected: bool
-
-
 def failure_reason(error: Exception) -> LetterReason:
     """Map an error from Extractor.extract to a `letters.reason`."""
     if isinstance(error, DownloadError):  # PdfDocument gave up after its retries
@@ -106,37 +93,6 @@ def failure_reason(error: Exception) -> LetterReason:
     if isinstance(error, NoTextError):
         return "no_text"
     return "extract_error"  # ExtractionError and anything else
-
-
-def scan_letter(extractor: LetterExtractor, render, url: str, programs: dict[str, str]) -> Scan:
-    """Extract one letter and, if relevant, render its summary. A reason of 'quota' means stop scanning."""
-    slug = letter_slug(url)
-    try:
-        result = extractor.extract(url)
-    except Exception as error:  # noqa: BLE001 - every failure becomes a reason on the letter's row
-        reason = failure_reason(error)
-        # not a letter we can't read but a bug or an unforeseen error: keep the traceback, fail the job
-        unexpected = reason == "extract_error" and not isinstance(error, ExtractionError)
-        if unexpected:
-            logger.exception("%s: failed unexpectedly", slug)
-        else:
-            logger.warning("%s: failed (%s, %s)", slug, reason, type(error).__name__)
-        return Scan("failed", reason, unexpected=unexpected)
-    if not result.relevant_to(programs):
-        logger.info("%s: not relevant (no code in master), skipped", slug)
-        return Scan("irrelevant")
-    usage = result.llm_usage
-    if usage:  # what the model calls cost and whether the self-review corrected the draft
-        logger.info("%s: %s used %d input (%d cached) + %d output tokens in %d calls",
-                    slug, usage["model"], usage["input_tokens"], usage.get("cached_tokens", 0),
-                    usage["output_tokens"], usage.get("calls", 1))
-        if usage.get("corrected"):
-            logger.info("%s: self-review corrected the draft: %s", slug, "; ".join(usage["review_problems"]))
-    try:
-        return Scan("pending", pdf=render(result, result.named_matches(programs)))
-    except Exception:  # noqa: BLE001 - one bad render must not stop the run
-        logger.exception("%s: summary PDF failed", slug)
-        return Scan("failed", "render_error", unexpected=True)
 
 
 def limits(uow) -> tuple[int, int, int]:
@@ -250,28 +206,6 @@ def resume_run(uow, ports: Ports, run: dict, today) -> int:
     return deliver(uow, ports, run, today, ScanCounts(new_letters=0, relevant=0, failed=0))
 
 
-def scan_new_letters(uow, ports: Ports, urls: list[str], stats: ScanCounts) -> ScanNewLettersResult:
-    """Scan unseen feed URLs and report whether quota or an unexpected error occurred."""
-    known = uow.letters.known_urls()
-    new = [u for u in urls if u not in known]
-    stats["new_letters"] = len(new)
-    if not new:
-        return ScanNewLettersResult(False, False)
-    programs = uow.programs()
-    extractor = ports.extractor(programs)
-    unexpected = False
-    for url in new:
-        scan = scan_letter(extractor, ports.render, url, programs)
-        uow.letters.insert(url, scan.status, scan.reason, scan.pdf)
-        uow.commit()
-        stats["relevant"] += scan.status == "pending"
-        stats["failed"] += scan.status == "failed"
-        unexpected = unexpected or scan.unexpected
-        if scan.reason == "quota":  # stop scanning; the rest stay untouched, pending ones still go out
-            return ScanNewLettersResult(True, unexpected)
-    return ScanNewLettersResult(False, unexpected)
-
-
 def send_job(uow, ports: Ports) -> int:
     now = ports.now()
     run = uow.send_runs.find_open()
@@ -288,27 +222,36 @@ def send_job(uow, ports: Ports) -> int:
     if problem:
         return finish_scan(uow, day, "failed", problem)
 
+    from bot.service_layer.analysis import drain_queue, refresh_feed  # analysis imports this module
     try:
-        urls = [letter.url for letter in ports.feed()]
+        refreshed = refresh_feed(uow, ports.feed, auto=True)
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return finish_scan(uow, day, "failed", "feed_unreachable")
-    stats = ScanCounts(new_letters=0, relevant=0, failed=0)
-    scan_result = scan_new_letters(uow, ports, urls, stats)
-    reason = "quota" if scan_result.quota else None
-    stats["letters_in_feed"] = len(urls)
-    logger.info("feed %d letters, scanned %d, relevant %d, failed %d",
-                len(urls), stats["new_letters"], stats["relevant"], stats["failed"])
-
-    pending = uow.letters.pending()
-    batches, oversized = plan.batches([(p["letter_url"], p["pdf_bytes"]) for p in pending])
-    for url, _ in oversized:  # rendered fine, but too big to attach to any email
-        uow.letters.mark_failed(url, "pdf_too_large")
-        stats["failed"] += 1
-    uow.commit()
+    drain_queue(uow, ports.extractor, ports.model)
+    auto_since = uow.setting("auto_since")
+    if auto_since is None:  # the schedule was set before auto_since existed: turn it off and on again
+        logger.warning("settings.auto_since is not set: no letter is sent automatically")
+    urls = uow.letters.auto_eligible(auto_since) if auto_since else []
+    stats = ScanCounts(letters_in_feed=refreshed.new + refreshed.seen, new_letters=refreshed.new,
+                       relevant=len(urls), failed=0)
+    sizes, render_failed = [], False
+    for url in urls:
+        try:
+            [(_, pdf)] = attachments(uow, ports, [url])  # for its size; deliver renders it again to send
+        except Exception:  # noqa: BLE001 - one bad render must not stop the run
+            logger.exception("%s: summary PDF failed", letter_slug(url))
+            stats["failed"] += 1
+            render_failed = True
+            continue
+        sizes.append((url, len(pdf)))
+    batches, oversized = plan.batches(sizes)
+    stats["failed"] += len(oversized)  # rendered fine, but too big to attach to any email
+    logger.info("feed %d letters, new %d, to send %d, failed %d",
+                stats["letters_in_feed"], stats["new_letters"], stats["relevant"], stats["failed"])
     if not batches:
-        code = finish_scan(uow, day, "nothing_new", reason, **stats)
-        return 1 if scan_result.unexpected else code
+        code = finish_scan(uow, day, "nothing_new", **stats)
+        return 1 if render_failed else code
 
     chunks = plan.chunks(recipients)
     daily, reserve, monthly = limits(uow)
@@ -323,34 +266,25 @@ def send_job(uow, ports: Ports) -> int:
     uow.commit()
     run = SendRun(id=run_id, from_address=from_address, reply_to_address=reply_to,
                   recipients=recipients, batches=batch_urls)
-    code = deliver(uow, ports, run, day, stats, reason)
-    return 1 if scan_result.unexpected else code
-
-
-def mark_seen(uow, ports: Ports) -> int:
-    """T7: record every current feed URL as sent without scanning; one `scans` row."""
-    try:
-        urls = [letter.url for letter in ports.feed()]
-    except FeedUnreachable as error:
-        logger.error("feed unreachable: %s", error)
-        return 1
-    uow.letters.mark_seen(urls)
-    return finish_scan(uow, ports.now().astimezone(ISRAEL).date(), "nothing_new", letters_in_feed=len(urls))
+    code = deliver(uow, ports, run, day, stats)
+    return 1 if render_failed else code
 
 
 def send_pending_test(uow, ports: Ports, address: str) -> int:
-    """Local test: send the pending PDFs to `address` only; email_log kind 'test', nothing else written."""
+    """Local test: send the letters an auto run would send (any auto_since), rendered now, to `address`
+    only; email_log kind 'test', nothing else written."""
     from_address = uow.setting("from_address", "")
-    batches, _ = plan.batches([(p["letter_url"], p["pdf_bytes"]) for p in uow.letters.pending()])
+    urls = uow.letters.auto_eligible(None)
+    files = dict(zip(urls, attachments(uow, ports, urls)))
+    batches, _ = plan.batches([(url, len(pdf)) for url, (_, pdf) in files.items()])
     if not from_address or not batches:
-        logger.error("nothing to test-send (from_address set: %s, pending batches: %d)",
-                     bool(from_address), len(batches))
+        logger.error("nothing to test-send (from_address set: %s, batches: %d)", bool(from_address), len(batches))
         return 1
     for batch in batches:
         key = f"test-{uuid.uuid4()}"
         try:
             ports.send_email(from_address=from_address, reply_to=address, bcc=[],
-                             attachments=attachments(uow, ports, [url for url, _ in batch]),
+                             attachments=[files[url] for url, _ in batch],
                              subject=EMAIL_SUBJECT, html=EMAIL_HTML, idempotency_key=key)
         except ResendError as error:
             logger.error("test send failed (HTTP %s, %s)", error.status, error.name)
@@ -382,8 +316,8 @@ def send_test_message(uow, ports: Ports, recipients: list[str], files=(),
 
 
 def render_all(uow, ports: Ports, out_dir: Path) -> int:
-    """Local: scan every feed letter and render to `out_dir`; Neon is only read, nothing is sent.
-    Exits non-zero if any relevant letter failed or the model quota stopped the scan."""
+    """Local: extract every feed letter and render the relevant ones to `out_dir`; Neon is only read,
+    nothing is sent. Exits non-zero if any letter failed or the model quota stopped the run."""
     try:
         urls = [letter.url for letter in ports.feed()]
     except FeedUnreachable as error:
@@ -393,21 +327,30 @@ def render_all(uow, ports: Ports, out_dir: Path) -> int:
     programs = uow.programs()
     extractor = ports.extractor(programs)
     rendered = failed = 0
-    unexpected = False
-    for url in urls:
-        scan = scan_letter(extractor, ports.render, url, programs)
-        if scan.status == "pending":
-            (out_dir / f"{letter_slug(url)}_summary.pdf").write_bytes(scan.pdf)
-            rendered += 1
-            try:
-                ports.save_copy(url, out_dir / f"{letter_slug(url)}_original.pdf")
-            except Exception:  # noqa: BLE001 - the summary is what matters here
-                logger.exception("%s: could not save the original PDF", letter_slug(url))
-        failed += scan.status == "failed"
-        unexpected = unexpected or scan.unexpected
-        if scan.reason == "quota":
-            logger.error("--no-email: the model quota ran out, %d letter(s) not scanned",
-                         len(urls) - urls.index(url) - 1)
-            break
+    for i, url in enumerate(urls):
+        slug = letter_slug(url)
+        try:
+            result = extractor.extract(url)
+            pdf = result.relevant_to(programs) and ports.render(result, result.named_matches(programs))
+        except Exception as error:  # noqa: BLE001 - one bad letter must not stop the run
+            reason = failure_reason(error)
+            if reason == "extract_error" and not isinstance(error, ExtractionError):
+                logger.exception("%s: failed unexpectedly", slug)
+            else:
+                logger.warning("%s: failed (%s, %s)", slug, reason, type(error).__name__)
+            failed += 1
+            if reason == "quota":
+                logger.error("--no-email: the model quota ran out, %d letter(s) not scanned", len(urls) - i - 1)
+                break
+            continue
+        if not pdf:
+            logger.info("%s: not relevant (no code in master), skipped", slug)
+            continue
+        (out_dir / f"{slug}_summary.pdf").write_bytes(pdf)
+        rendered += 1
+        try:
+            ports.save_copy(url, out_dir / f"{slug}_original.pdf")
+        except Exception:  # noqa: BLE001 - the summary is what matters here
+            logger.exception("%s: could not save the original PDF", slug)
     logger.info("--no-email: %d PDF(s) rendered, %d failed, nothing sent", rendered, failed)
-    return 1 if failed or unexpected else 0
+    return 1 if failed else 0

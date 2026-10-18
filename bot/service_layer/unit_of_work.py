@@ -1,7 +1,7 @@
 """Unit of Work (Cosmic Python ch. 6): one Postgres connection, and the only place that commits.
 
     with UnitOfWork() as uow:
-        uow.letters.insert(url, "pending", pdf=pdf)
+        uow.letters.upsert_feed(letters, auto=False)
         uow.commit()            # anything not committed is rolled back on exit
 
 The services see one repository per table (uow.letters, .send_runs, .email_log, .scans) and a few

@@ -32,6 +32,11 @@ def extractor(programs: dict) -> Extractor:
     return Extractor(programs, analyze=LlmAnalyzer(**llm_settings()), load=open_letter)
 
 
+def model_name() -> str:
+    """The model the Extractor uses (MODEL_NAME, or the provider's default), for analysis_version."""
+    return LlmAnalyzer(**llm_settings()).model
+
+
 def ports() -> Ports:
     return Ports(feed=fetch_letters, extractor=extractor, render=SummaryPdfRenderer().render, send_email=send_email,
-                 save_copy=save_copy)
+                 save_copy=save_copy, model=model_name())
