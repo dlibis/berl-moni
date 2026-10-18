@@ -23,6 +23,9 @@ class SendRunsRepository:
             (day, from_address, reply_to_address, Jsonb(recipients), Jsonb(batches), kind,
              requested_by)).fetchone()["id"]
 
+    def get(self, run_id: int) -> dict | None:
+        return self.conn.execute("SELECT * FROM send_runs WHERE id = %s", (run_id,)).fetchone()
+
     def lock_budget(self) -> None:
         self.conn.execute("SELECT pg_advisory_xact_lock(hashtext('letters-send'))")
 
