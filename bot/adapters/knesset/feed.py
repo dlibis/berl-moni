@@ -1,10 +1,12 @@
-"""Knesset feed client: fetch_letter_urls() lists the PDF URLs of the budget-transfer requests pending
-in the Finance Committee (requestStatus 2), reading every page of the feed. Raises FeedUnreachable."""
+"""Knesset feed client: fetch_letters() lists the budget-transfer requests pending in the Finance Committee
+(requestStatus 2), one FeedLetter per PDF, reading every page of the feed. Raises FeedUnreachable."""
+from datetime import datetime
 from math import ceil
 
 from requests import RequestException, post
 
 from bot.domain.errors import FeedUnreachable
+from bot.domain.feed import FeedLetter
 
 FEED_URL = "https://www.knesset.gov.il/WebSiteApi/knessetapi/CommitteeReports/GetCommitteePortalsBudget"
 PAGE_SIZE = 10
@@ -32,7 +34,7 @@ def _get_page(page_num):
     return rows
 
 
-def fetch_letter_urls():
+def fetch_letters():
     first_page = _get_page(1)
     if not first_page:
         return []
@@ -47,10 +49,21 @@ def fetch_letter_urls():
     if len(rows) != total:
         raise FeedUnreachable(f"got {len(rows)} rows, TotalCount is {total}")
 
-    urls = []
+    by_url = {}
     for row in rows:
         url = row.get("ReportUrl")
-        if not (url or "").strip() or url in urls:
-            continue
-        urls.append(url)
-    return urls
+        if (url or "").strip():
+            by_url.setdefault(url, []).append(row)
+    return [_letter(url, group) for url, group in by_url.items()]
+
+
+def _letter(url, rows):
+    dates = [datetime.fromisoformat(row["ApprovedDate"]).date() for row in rows if row.get("ApprovedDate")]
+    numbers = dict.fromkeys(row["RequestNumberRange"] for row in rows if row.get("RequestNumberRange"))
+    return FeedLetter(
+        url=url,
+        letter_date=min(dates, default=None),
+        ministry=next((row["GovMinistryName"] for row in rows if row.get("GovMinistryName")), ""),
+        request_numbers=tuple(numbers),
+        rows=tuple({k: v for k, v in row.items() if k not in ("Description", "TotalCount")} for row in rows),
+    )

@@ -3,7 +3,7 @@ builds the real adapters. Nothing else in bot/ reads the environment or wires de
 """
 import logging
 
-from bot.adapters.knesset.feed import fetch_letter_urls
+from bot.adapters.knesset.feed import fetch_letters
 from bot.adapters.letter_pdf.download import save_copy
 from bot.adapters.letter_pdf.loader import open_letter
 from bot.adapters.llm.letter_analyzer import LlmAnalyzer
@@ -33,5 +33,5 @@ def extractor(programs: dict) -> Extractor:
 
 
 def ports() -> Ports:
-    return Ports(feed=fetch_letter_urls, extractor=extractor, render=SummaryPdfRenderer().render, send_email=send_email,
+    return Ports(feed=fetch_letters, extractor=extractor, render=SummaryPdfRenderer().render, send_email=send_email,
                  save_copy=save_copy)

@@ -23,6 +23,7 @@ import requests
 from bot.domain import send_plan as plan
 from bot.domain.errors import DownloadError, ExtractionError, FeedUnreachable, NoTextError, ResendError
 from bot.domain.extraction import Extraction
+from bot.domain.feed import FeedLetter
 from bot.domain.slug import letter_slug
 from bot.domain.statuses import LetterReason, LetterStatus, ScanReason, ScanStatus
 from common.limits import list_cap
@@ -49,7 +50,7 @@ class SendEmail(Protocol):
 @dataclass
 class Ports:
     """The outside world the use cases talk to (Cosmic Python ch. 13: injected, not imported)."""
-    feed: Callable[[], list[str]]                                 # knesset.feed.fetch_letter_urls
+    feed: Callable[[], list[FeedLetter]]                          # knesset.feed.fetch_letters
     extractor: Callable[[dict[str, str]], LetterExtractor]        # programs -> domain.extraction.Extractor
     render: Callable[[Extraction, Path, dict[str, str]], Path]      # summary_pdf.renderer.SummaryPdfRenderer.render
     send_email: SendEmail                                         # resend.email_sender.send_email
@@ -272,7 +273,7 @@ def send_job(uow, ports: Ports) -> int:
         return finish_scan(uow, day, "failed", problem)
 
     try:
-        urls = ports.feed()
+        urls = [letter.url for letter in ports.feed()]
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return finish_scan(uow, day, "failed", "feed_unreachable")
@@ -312,7 +313,7 @@ def send_job(uow, ports: Ports) -> int:
 def mark_seen(uow, ports: Ports) -> int:
     """T7: record every current feed URL as sent without scanning; one `scans` row."""
     try:
-        urls = ports.feed()
+        urls = [letter.url for letter in ports.feed()]
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return 1
@@ -367,7 +368,7 @@ def render_all(uow, ports: Ports, out_dir: Path) -> int:
     """Local: scan every feed letter and render to `out_dir`; Neon is only read, nothing is sent.
     Exits non-zero if any relevant letter failed or the model quota stopped the scan."""
     try:
-        urls = ports.feed()
+        urls = [letter.url for letter in ports.feed()]
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return 1
