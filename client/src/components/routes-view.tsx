@@ -8,6 +8,7 @@ import { AuthLayout } from "../layouts/auth-layout";
 import { Loading } from "./loading";
 import { ErrorState } from "./error-state";
 import { Home } from "../pages/home";
+import { Letter } from "../pages/letter";
 import { Programs } from "../pages/programs";
 import { MailingList } from "../pages/mailing-list";
 import { Schedule } from "../pages/schedule";
@@ -39,6 +40,7 @@ export function RoutesView() {
       {session.data ? (
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
+          <Route path="/letters/:slug" element={<Letter />} />
           <Route path="/programs" element={<Programs />} />
           <Route path="/mailing-list" element={<MailingList />} />
           <Route path="/schedule" element={<Schedule />} />
