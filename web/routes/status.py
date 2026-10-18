@@ -18,7 +18,6 @@ def _json(row):
 def get_status():
     with connect() as conn:
         scan = conn.execute("SELECT * FROM scans ORDER BY ran_at DESC LIMIT 1").fetchone()
-        failed_letters = list(conn.execute("SELECT slug, reason, scanned_at FROM letters WHERE status = 'failed' ORDER BY scanned_at DESC"))
         run = conn.execute("SELECT id, day, failed_at, error, batches, recipients FROM send_runs WHERE status = 'failed' ORDER BY failed_at DESC LIMIT 1").fetchone()
         schedule = get_setting(conn, "schedule", [])
         sent = conn.execute("SELECT count(*) AS count FROM email_log WHERE idempotency_key LIKE %s", (f"run{run['id']}-%",)).fetchone()["count"] if run else 0
@@ -35,4 +34,4 @@ def get_status():
         chunks = (recipients + 48) // 49
         total = len(run["batches"] or []) * chunks
         failed_run = {"id": run["id"], "day": run["day"].isoformat(), "failed_at": run["failed_at"].isoformat(), "error": run["error"], "sent_messages": sent, "unsent_messages": max(total - sent, 0), "keys_expired": (datetime.now(timezone.utc) - run["failed_at"]).total_seconds() > 86400}
-    return jsonify({"latest_scan": _json(scan), "next_scheduled_send_day": next_day, "failed_letters": [_json(row) for row in failed_letters], "failed_send_run": failed_run})
+    return jsonify({"latest_scan": _json(scan), "next_scheduled_send_day": next_day, "failed_send_run": failed_run})
