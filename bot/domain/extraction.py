@@ -24,6 +24,7 @@ from typing import Callable, Iterable, Protocol
 from bot.domain.errors import ExtractionError
 from bot.domain.request_fields import PROGRAM_HEADING, ProgramUses, RequestFields
 from bot.domain.table import Table
+from bot.domain.versions import SCHEMA_VERSION
 
 # The budget table's columns: code, name, then '<metric> from' / '<metric> to' per metric.
 CODE_COLUMN = "number"
@@ -47,6 +48,8 @@ class LetterText(Protocol):
 class LetterDocument(Protocol):
     """The loaded-letter operations used by Extractor."""
     doc: LetterText
+    source_sha256: str
+    source_size: int
 
     def extract_combined_table(self) -> Table: ...
     def arithmetic_failures(self) -> list[str]: ...
@@ -72,6 +75,48 @@ class Extraction:
     letterhead: list[str] = field(default_factory=list)
     budget_history: list[tuple[str, Table]] = field(default_factory=list)
     llm_usage: dict | None = None   # model + token counts of the one LLM call, for the job log
+    source_sha256: str = ""
+    source_size: int = 0
+
+    @staticmethod
+    def _table_to_json(table: Table) -> dict:
+        return {"columns": list(table.columns), "rows": [list(row) for row in table.rows]}
+
+    @staticmethod
+    def _table_from_json(data: dict) -> Table:
+        return Table(tuple(data["columns"]), tuple(tuple(row) for row in data["rows"]))
+
+    def to_json(self) -> dict:
+        """The versioned, program-independent extraction persisted by the worker."""
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "source": self.source,
+            "scanned": self.scanned,
+            "table": self._table_to_json(self.table),
+            "budget_history": [
+                {"label": label, "table": self._table_to_json(table)}
+                for label, table in self.budget_history
+            ],
+            "letterhead": self.letterhead,
+            "fields": self.fields.model_dump() if self.fields is not None else None,
+            "llm_usage": self.llm_usage,
+        }
+
+    @classmethod
+    def from_json(cls, data: dict) -> Extraction:
+        fields = RequestFields.model_validate(data["fields"]) if data.get("fields") is not None else None
+        return cls(
+            source=data["source"],
+            table=cls._table_from_json(data["table"]),
+            scanned=data.get("scanned", False),
+            fields=fields,
+            letterhead=list(data.get("letterhead", [])),
+            budget_history=[
+                (item["label"], cls._table_from_json(item["table"]))
+                for item in data.get("budget_history", [])
+            ],
+            llm_usage=data.get("llm_usage"),
+        )
 
     def codes(self) -> set[str]:
         """The letter's program codes, zero-padded to 6 digits (as the master set holds them)."""
@@ -112,11 +157,12 @@ class Extractor:
         """Extract one letter (URL or local path) into fields + table + relevance."""
         letter = self.load(source)
         scanned = letter.doc.scanned
+        source_details = {"source_sha256": letter.source_sha256, "source_size": letter.source_size}
 
         # Relevance first: an irrelevant letter makes no model call and no field checks.
         table = letter.extract_combined_table()
         if not Extraction(source, table).relevant_to(self.master):
-            return Extraction(source, table, scanned=scanned)
+            return Extraction(source, table, scanned=scanned, **source_details)
 
         bad_rows = letter.arithmetic_failures()
         if bad_rows and not scanned:
@@ -149,7 +195,7 @@ class Extractor:
         if empty:
             raise ExtractionError(f"empty required field: {', '.join(empty)}")
 
-        return Extraction(source, table, scanned=scanned, fields=fields,
+        return Extraction(source, table, scanned=scanned, fields=fields, **source_details,
                           letterhead=letter.extract_letterhead(), budget_history=letter.extract_budget_history(),
                           llm_usage=usage)
 

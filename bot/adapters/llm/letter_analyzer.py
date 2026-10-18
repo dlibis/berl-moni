@@ -19,6 +19,7 @@ DEFAULT_MODELS = {
 }
 DEFAULT_MODEL = DEFAULT_MODELS["openai"]
 
+# Increment bot.domain.versions.PROMPT_VERSION whenever these prompt instructions change.
 # The report's reader wants, at a glance, what this request's money is for. Two lessons from real
 # letters shape the rules: 'תיאור התוכנית' is the budget line's standing description and often has
 # nothing to do with this request (central office services funding a food-security project), and
