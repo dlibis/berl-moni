@@ -10,8 +10,11 @@ from typing import Literal
 LetterStatus = Literal["pending", "irrelevant", "failed", "sent"]
 LetterReason = Literal["quota", "network", "provider_5xx", "extract_error", "render_error", "no_text",
                        "pdf_too_large"]
+AnalysisStatus = Literal["discovered", "queued", "analyzing", "analyzed", "failed"]
 RunStatus = Literal["sending", "sent", "failed", "abandoned"]
+SendKind = Literal["auto", "manual"]
 ScanStatus = Literal["sent", "nothing_new", "failed"]
 ScanReason = Literal["missing_settings", "list_over_cap", "feed_unreachable", "quota", "over_budget",
                      "resend_error", "send_run_stuck"]
 EmailKind = Literal["letter", "test"]
+EmailStatus = Literal["sending", "sent", "unknown"]
