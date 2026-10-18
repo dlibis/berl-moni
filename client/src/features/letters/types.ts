@@ -9,11 +9,7 @@ export type LetterStatusFilter =
   | "outdated";
 
 export type AnalysisStatus =
-  | "discovered"
-  | "queued"
-  | "analyzing"
-  | "analyzed"
-  | "failed";
+  "discovered" | "queued" | "analyzing" | "analyzed" | "failed";
 
 export type LetterItem = {
   slug: string;
@@ -35,14 +31,43 @@ export type LetterItem = {
   send_count: number;
 };
 
+export type ReportItem = { code: string; name: string; amount: number };
+
+export type ReportTable = {
+  columns: string[];
+  rows: (string | number | null)[][];
+};
+
 export type LetterReport = {
-  source: string;
-  scanned: boolean;
-  letterhead: string[];
-  summary: Record<string, string | number>;
-  money_flow: Record<string, unknown>;
-  why: Record<string, unknown>[];
-  appendix: Record<string, unknown>;
+  header: { letterhead: string[]; scanned: boolean; source: string };
+  summary: {
+    date: string;
+    request_number: string;
+    total_amount: string;
+    coalition_funds: string;
+    program_count: number;
+    master_count: number;
+  };
+  money_flow: {
+    metric: string;
+    hubs: { name: string; items: ReportItem[] }[];
+    destinations: ReportItem[];
+    folded: ReportItem[];
+  };
+  why: {
+    code: string;
+    name: string;
+    amount: number;
+    direction: "in" | "out";
+    master: boolean;
+    uses: string;
+  }[];
+  appendix: {
+    table: ReportTable;
+    budget_history: { label: string; table: ReportTable }[];
+    decision_links: string[];
+    staffing_changes: string;
+  };
 };
 
 export type LetterDetail = LetterItem & { report: LetterReport | null };
