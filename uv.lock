@@ -624,7 +624,10 @@ source = { virtual = "." }
 dependencies = [
     { name = "flask" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "python-bidi" },
     { name = "python-dotenv" },
+    { name = "reportlab" },
     { name = "requests" },
 ]
 
@@ -653,7 +656,10 @@ dev = [
 requires-dist = [
     { name = "flask", specifier = ">=3.1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
+    { name = "pydantic", specifier = ">=2.13.4" },
+    { name = "python-bidi", specifier = ">=0.6.11" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "reportlab", specifier = ">=5.0.1" },
     { name = "requests", specifier = ">=2.34.2" },
 ]
 

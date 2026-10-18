@@ -4,6 +4,7 @@ Reads os.environ only; the entry point loads .env first (common.env.load_env).
 """
 import os
 
+# GITHUB_DISPATCH_TOKEN is optional for `web`: without it the hourly run drains the analysis queue.
 REQUIRED = {
     "web": ["DATABASE_URL", "NEON_AUTH_BASE_URL", "SITE_ORIGIN"],
     "check": ["DATABASE_URL"],

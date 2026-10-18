@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 * * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "drain: analyze queued letters"
+        required: false
+        type: choice
+        options: [drain]
 
 concurrency:
   group: letters
@@ -17,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       due: ${{ steps.due.outputs.due }}
+      queued: ${{ steps.due.outputs.queued }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
@@ -26,9 +33,9 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-  send:
+  worker:
     needs: check
-    if: needs.check.outputs.due == 'true'
+    if: needs.check.outputs.due == 'true' || needs.check.outputs.queued == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

@@ -13,7 +13,8 @@
       "entrypoint": "web.app:app",
       "functions": {
         "web/app.py": {
-          "excludeFiles": "{client/**,bot/**,tests/**,db/**,docs/**,files/**,public/**,.env*,*.xlsx,*.pdf,.claude/**,_bmad-output/**,.pytest_cache/**,.github/**,.neon,seed_programs.py,skills-lock.json}"
+          "maxDuration": 300,
+          "excludeFiles": "{client/**,bot/adapters/llm/**,bot/adapters/letter_pdf/**,bot/tests/**,bot/entrypoints/**,tests/**,db/**,docs/**,files/**,public/**,.env*,*.xlsx,*.pdf,.claude/**,_bmad-output/**,.pytest_cache/**,.github/**,.neon,seed_programs.py,skills-lock.json}"
         }
       }
     }
