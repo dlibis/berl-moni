@@ -2,13 +2,15 @@ import { Button } from "./ui/button";
 export function Pagination({
   page,
   count,
+  pageSize = 25,
   setPage,
 }: {
   page: number;
   count: number;
+  pageSize?: number;
   setPage: (page: number) => void;
 }) {
-  const pages = Math.max(1, Math.ceil(count / 25));
+  const pages = Math.max(1, Math.ceil(count / pageSize));
   if (pages === 1) return null;
   return (
     <div className="mt-4 flex items-center gap-2 text-sm">
