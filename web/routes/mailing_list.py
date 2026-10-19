@@ -48,10 +48,10 @@ def add_mailing_list_email():
     return jsonify({"email": email}), 201
 
 
-@mailing_list_bp.delete("/<path:email>")
+@mailing_list_bp.delete("")
 @require_session
-def delete_mailing_list_email(email):
-    email = _email(email)
+def delete_mailing_list_email():
+    email = _email((request.get_json(silent=True) or {}).get("email"))
     if email is None:
         return jsonify({"error": "invalid email"}), 400
     with connect() as conn:

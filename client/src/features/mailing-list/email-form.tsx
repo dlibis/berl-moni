@@ -22,10 +22,7 @@ export function EmailForm({
       if (initial === next) return;
       await write("/api/v1/mailing_list", "POST", { email: next });
       if (initial)
-        await write(
-          `/api/v1/mailing_list/${encodeURIComponent(initial)}`,
-          "DELETE",
-        );
+        await write("/api/v1/mailing_list", "DELETE", { email: initial });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailing"] });

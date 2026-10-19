@@ -22,7 +22,7 @@ export function EmailActions({ email }: { email: string }) {
   const queryClient = useQueryClient();
   const remove = useMutation({
     mutationFn: () =>
-      write(`/api/v1/mailing_list/${encodeURIComponent(email)}`, "DELETE"),
+      write("/api/v1/mailing_list", "DELETE", { email }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailing"] });
     },
