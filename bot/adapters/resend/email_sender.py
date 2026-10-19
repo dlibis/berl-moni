@@ -15,6 +15,7 @@ from bot.domain.errors import ResendError
 logger = logging.getLogger(__name__)
 
 RESEND_EMAILS_URL = "https://api.resend.com/emails"
+SENDER_NAME = "Berl Reports"  # display name shown before every from_address
 
 
 def send_email(*, from_address: str, reply_to: str, bcc: list[str],
@@ -26,7 +27,7 @@ def send_email(*, from_address: str, reply_to: str, bcc: list[str],
             RESEND_EMAILS_URL,
             headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}",
                      "Idempotency-Key": idempotency_key},
-            json={"from": from_address, "to": [reply_to], "reply_to": reply_to, "bcc": bcc,
+            json={"from": f"{SENDER_NAME} <{from_address}>", "to": [reply_to], "reply_to": reply_to, "bcc": bcc,
                   "subject": subject, "html": html,
                   "attachments": [{"filename": filename, "content_type": "application/pdf",
                                    "content": base64.b64encode(data).decode("ascii")}

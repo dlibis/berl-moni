@@ -33,7 +33,16 @@ from common.schedule_due import ISRAEL
 logger = logging.getLogger(__name__)
 
 EMAIL_SUBJECT = "סיכום מכתבי העברה תקציבית"
-EMAIL_HTML = '<div dir="rtl"><p>מצורפים סיכומי מכתבי ההעברה התקציבית הרלוונטיים לתוכניות הקרן.</p></div>'
+# Resend derives the plain-text part from this HTML
+EMAIL_HTML = (
+    '<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#222">'
+    '<p>שלום,</p>'
+    '<p>מצורפים להודעה זו סיכומים של מכתבי העברה תקציבית חדשים שפורסמו ונמצאו רלוונטיים לתוכניות הקרן.</p>'
+    '<p>כל קובץ PDF מצורף מסכם מכתב אחד.</p>'
+    '<p style="font-size:12px;color:#888">הודעה זו נשלחה באופן אוטומטי מכתובת שאינה מקבלת תשובות. '
+    'אין להשיב להודעה זו.</p>'
+    '</div>'
+)
 SENDER_DOMAIN = "berl.site"  # the verified Resend domain every from_address must use
 # Longer than the web function's maxDuration (300 s): a manual run younger than this may still be sending.
 MANUAL_SEND_GRACE = timedelta(minutes=5)

@@ -36,8 +36,9 @@ def test_success_posts_once_with_idempotency_key_and_base64(monkeypatch):
     assert url == "https://api.resend.com/emails"
     assert kw["timeout"] == 60
     assert kw["headers"] == {"Authorization": "Bearer re_test", "Idempotency-Key": "run1-b0-c0"}
+    assert kw["json"]["from"] == "Berl Reports <news@example.com>"
     assert kw["json"]["to"] == ["staff@example.com"] and kw["json"]["bcc"] == SEND["bcc"]
-    assert kw["json"]["attachments"] == [{"filename": "letter.pdf", "content": base64.b64encode(b"%PDF-1").decode()}]
+    assert kw["json"]["attachments"] == [{"filename": "letter.pdf", "content_type": "application/pdf", "content": base64.b64encode(b"%PDF-1").decode()}]
 
 
 def test_returns_resend_email_id(monkeypatch):
