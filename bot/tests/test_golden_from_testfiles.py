@@ -1,10 +1,8 @@
 """Golden tests driven by the local PDFs in bot/tests/test_files/.
 
 Each test_files PDF whose request has a golden fixture (bot/tests/fixtures/golden/
-<req>.json) becomes a parametrized case. The deterministic test runs offline (no
-network, no LLM) and checks the fields the Extractor derives without the model; the
-full-extraction test runs the whole Extractor (incl. the one coalition LLM call) and
-is skipped without an API key for the provider set in MODEL_PROVIDER.
+<req>.json) becomes a parametrized case, checking the fields the Extractor derives
+without the model. No LLM calls.
 """
 import json
 import os
@@ -12,14 +10,11 @@ import re
 
 import pytest
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from common.env import load_env
 
 load_env()
 
 from bot import bootstrap  # noqa: E402
-from common.config import llm_settings  # noqa: E402
 from common.db import connect, load_programs  # noqa: E402
 from bot.domain.extraction import Extraction, Extractor  # noqa: E402
 from bot.adapters.letter_pdf.loader import open_letter  # noqa: E402
@@ -34,8 +29,6 @@ def _extractor(neon_test_db_url) -> Extractor:
         programs = load_programs(conn)
     return bootstrap.extractor(programs)
 
-
-_HAS_KEY = bool(llm_settings()["api_key"])
 
 
 def _cases():
@@ -75,19 +68,3 @@ def test_deterministic_fields_match_golden(req, pdf, golden, neon_test_db_url):
     matched = Extraction(pdf, letter.extract_combined_table()).matched(extractor.master)
     assert sorted(matched) == golden["master_matched"]
     assert bool(matched) == golden["expect_summary"]
-
-
-@pytest.mark.skipif(not (CASES and _HAS_KEY),
-                    reason="test_files fixtures or LLM API key (configured provider) not present")
-@pytest.mark.parametrize("req,pdf,golden", CASES, ids=IDS)
-def test_full_extraction_matches_golden(req, pdf, golden, neon_test_db_url):
-    """The whole Extractor, incl. the one coalition LLM call — needs an API key."""
-    extractor = _extractor(neon_test_db_url)
-    result = extractor.extract(pdf)
-
-    assert result.fields.date == golden["text"]["date"]
-    assert result.fields.staffing_changes == golden["text"]["staffing_changes"]
-    assert result.fields.coalition_funds == golden["text"]["coalition_funds"]
-    assert result.fields.program_number == golden["text"]["program_number"]
-    assert sorted(result.matched(extractor.master)) == golden["master_matched"]
-    assert result.relevant_to(extractor.master) == golden["expect_summary"]

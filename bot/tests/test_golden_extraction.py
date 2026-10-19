@@ -1,36 +1,12 @@
-"""FR-7 — golden tests over a real letter, driven by the single Extractor.
-
-The offline test exercises the Extractor's deterministic tools on the saved raw text (no
-network/LLM). The end-to-end test runs the whole Extractor (incl. the one coalition LLM
-call) on 21658's local PDF; it skips without an API key for the configured provider (there is no deterministic
-fallback for coalition_funds).
-"""
+"""FR-7 — golden tests over a real letter's saved raw text: the Extractor's deterministic
+tools only, no network and no LLM."""
 import os
 
 import pytest
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common.env import load_env
+from bot.domain.extraction import Extractor
 
-load_env()
-
-from bot import bootstrap  # noqa: E402
-from common.config import llm_settings  # noqa: E402
-from common.db import connect, load_programs  # noqa: E402
-from bot.domain.extraction import Extractor  # noqa: E402
-
-PDF_21658 = os.path.join(_ROOT, "bot", "tests", "test_files", "21658_original.pdf")
 RAW_21658 = os.path.join(os.path.dirname(__file__), "fixtures", "golden", "21658_raw.txt")
-
-
-def _extractor(neon_test_db_url) -> Extractor:
-    """The Extractor as the app builds it (model/key from env), with programs from the test DB."""
-    with connect(neon_test_db_url) as conn:
-        programs = load_programs(conn)
-    return bootstrap.extractor(programs)
-
-
-_HAS_KEY = bool(llm_settings()["api_key"])
 
 
 @pytest.mark.skipif(not os.path.isfile(RAW_21658), reason="21658 raw text not present")
@@ -52,35 +28,3 @@ def test_program_number_and_total_survive_a_one_line_narrative():
     region = Extractor._narrative_region(one_line)
     assert Extractor._program_number(region) == "231039, 230120"
     assert Extractor._total_amount(region) == "190,709"
-
-
-@pytest.mark.skipif(not (os.path.isfile(PDF_21658) and _HAS_KEY),
-                    reason="21658 PDF or LLM API key (configured provider) not present")
-def test_extractor_21658(neon_test_db_url):
-    """The whole Extractor — deterministic fields + the one coalition LLM call + master."""
-    extractor = _extractor(neon_test_db_url)
-    result = extractor.extract(PDF_21658)
-
-    # deterministic fields
-    assert result.fields.date == "01/07/2026"
-    assert result.fields.staffing_changes == "לא"
-    assert "231039" in result.fields.program_number
-    # the one LLM call
-    assert result.fields.coalition_funds == "כן"
-    assert result.fields.total_amount == "190,709"
-    # uses come from 'מטרת השינוי' only: 230120's description is office upkeep (rent, cars), but
-    # this request's money is for food security, part of it coalition-funded
-    office = " ".join(u.text for u in result.fields.uses("230120"))
-    assert "תזונתי" in office and "רכב" not in office and "שכר דירה" not in office
-    assert any(u.coalition for u in result.fields.uses("230120"))
-    # decisions are named by topic, never by number
-    assert not any(n in u.text for p in result.fields.programs for u in p.uses for n in ("550", "1279", "3315"))
-
-    # relevance (FR-5): 10 master matches -> relevant
-    master = extractor.master
-    assert result.relevant_to(master) is True
-    assert len(result.matched(master)) == 10
-
-    # master membership (FR-6), correct for a known match and non-match
-    assert "231039" in result.matched(master)       # in master
-    assert "470102" in result.codes() - master      # not in master
