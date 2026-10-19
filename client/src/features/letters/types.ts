@@ -38,32 +38,23 @@ export type ReportTable = {
   rows: (string | number | null)[][];
 };
 
+export type ReportUse = { text: string; coalition: boolean };
+
+export type ReportWhyRow = ReportItem & { master: boolean; uses: ReportUse[] };
+
 export type LetterReport = {
   header: { letterhead: string[]; scanned: boolean; source: string };
-  summary: {
-    date: string;
-    request_number: string;
-    total_amount: string;
-    coalition_funds: string;
-    program_count: number;
-    master_count: number;
-  };
+  summary: { label: string; value: string }[];
   money_flow: {
     metric: string;
     hubs: { name: string; items: ReportItem[] }[];
     destinations: ReportItem[];
     folded: ReportItem[];
+    master: string[];
   };
-  why: {
-    code: string;
-    name: string;
-    amount: number;
-    direction: "in" | "out";
-    master: boolean;
-    uses: string;
-  }[];
+  why: { shown: ReportWhyRow[]; folded: ReportWhyRow[]; sources: string[] };
   appendix: {
-    table: ReportTable;
+    table: { rows: string[][]; spans: [number, number, number][] };
     budget_history: { label: string; table: ReportTable }[];
     decision_links: string[];
     staffing_changes: string;

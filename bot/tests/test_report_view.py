@@ -12,14 +12,22 @@ def complete_extraction():
 def test_report_view_matches_money_flow(complete_extraction):
     view = report_view(complete_extraction, {"200102": "b"})
     assert view["money_flow"]["metric"] == "net"
-    assert [w["direction"] for w in view["why"]] == ["in", "out"] and view["why"][0]["master"] is True
+    assert view["money_flow"]["master"] == ["200102"]
+    assert view["why"]["shown"][0]["master"] is True and view["why"]["sources"] == ["200101"]
 
 
 def test_report_view_sections(complete_extraction):
     view = report_view(complete_extraction, {"200102": "b"})
-    assert view["summary"] == {"date": "18/10/2026", "request_number": "13-206", "total_amount": "60",
-                               "coalition_funds": "לא", "program_count": 2, "master_count": 1}
+    assert view["summary"] == [
+        {"label": "סך הפנייה", "value": "60 אלפי ש״ח"},
+        {"label": "העברה פנימית במשרד", "value": "60 אלפי ש״ח"},
+        {"label": "כספים קואליציוניים", "value": "לא"},
+        {"label": "תוכניות מהמאסטר", "value": "1 מתוך 2"},
+        {"label": "מס' פנייה", "value": "13-206"},
+        {"label": "תאריך", "value": "18/10/2026"},
+    ]
     assert view["money_flow"]["destinations"] == [{"code": "200102", "name": "b", "amount": 60.0}]
-    assert view["why"][0]["uses"] == "test use"
+    assert view["why"]["shown"][0]["uses"] == [{"text": "test use", "coalition": False}]
+    assert view["appendix"]["table"]["rows"][1] == ["200101", "a", "מ-", "100", "-60", "לא"]
     assert view["appendix"]["decision_links"] == ["https://example.test/decision"]
     assert view["appendix"]["budget_history"][0]["table"]["columns"] == ["year", "net"]

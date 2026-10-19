@@ -18,9 +18,4 @@ COALITION_ORANGE = "#b35c00"
 HEAD_TINT = colors.HexColor("#eef3fb")     # header rows and label cells
 RULE = colors.HexColor("#d0d0d0")          # lines between rows
 
-UNIT = "אלפי ש״ח"   # every amount in a letter is in thousands of shekels
-
-
-def money(thousands: float) -> str:
-    """A letter's figure as printed, with its unit: '139,917 אלפי ש״ח'."""
-    return f"{abs(thousands):,.0f} {UNIT}"
+from bot.domain.report import UNIT, money  # noqa: E402,F401  shared with the web report

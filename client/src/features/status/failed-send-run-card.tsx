@@ -14,7 +14,7 @@ export function FailedSendRunCard() {
   const recover = useRecover();
   if (!run) return null;
   return (
-    <section className="rounded-lg border border-destructive/30 bg-destructive/5 p-5">
+    <section className="mb-8 rounded-lg border border-destructive/30 bg-destructive/5 p-5">
       <div className="flex items-center gap-2 text-destructive">
         <AlertTriangle size={20} />
         <h2 className="text-xl font-semibold">שליחה שנכשלה</h2>

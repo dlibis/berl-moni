@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { TableCell, TableRow } from "../../components/ui/table";
 import { dateTime, day } from "../../utils/date-time";
@@ -8,9 +9,10 @@ import type { LetterItem } from "./types";
 export function LetterRow({ letter }: { letter: LetterItem }) {
   const hasReport = letter.analysis_status === "analyzed" && !letter.legacy;
   const date = letter.letter_date ? day(letter.letter_date) : "—";
+  const numbers = letter.request_numbers.join(", ");
   return (
     <TableRow>
-      <TableCell>
+      <TableCell className="whitespace-nowrap">
         {hasReport ? (
           <Link className="underline" to={`/letters/${letter.slug}`}>
             {date}
@@ -19,10 +21,12 @@ export function LetterRow({ letter }: { letter: LetterItem }) {
           date
         )}
       </TableCell>
-      <TableCell className="font-mono">
-        {letter.request_numbers.join(", ") || "—"}
-      </TableCell>
-      <TableCell>{letter.ministry ?? "—"}</TableCell>
+      <OverflowCell dir="ltr" className="font-mono" hint={numbers}>
+        {numbers || "—"}
+      </OverflowCell>
+      <OverflowCell hint={letter.ministry ?? undefined}>
+        {letter.ministry ?? "—"}
+      </OverflowCell>
       <TableCell>
         <LetterStatusBadge letter={letter} />
       </TableCell>
@@ -31,5 +35,40 @@ export function LetterRow({ letter }: { letter: LetterItem }) {
         <LetterActions letter={letter} />
       </TableCell>
     </TableRow>
+  );
+}
+
+/** Ellipsis + hover hint only when the cell actually overflows. */
+function OverflowCell({
+  hint,
+  className,
+  children,
+  dir,
+}: {
+  hint?: string;
+  className?: string;
+  children: ReactNode;
+  dir?: "ltr" | "rtl";
+}) {
+  const ref = useRef<HTMLTableCellElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const sync = () => setOverflow(el.scrollWidth > el.clientWidth + 1);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [children]);
+  return (
+    <TableCell
+      ref={ref}
+      dir={dir}
+      className={`truncate ${className ?? ""}`}
+      title={overflow ? hint : undefined}
+    >
+      {children}
+    </TableCell>
   );
 }

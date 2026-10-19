@@ -28,9 +28,11 @@ from reportlab.platypus import (CondPageBreak, PageBreak, Paragraph, SimpleDocTe
 from bot.adapters.summary_pdf.flow_chart import flow_chart
 from bot.adapters.summary_pdf.hebrew_text import fix_split_words, rtl, wrap_rtl_html
 from bot.adapters.summary_pdf.theme import (COALITION_ORANGE, FONT, FONT_PATH, HEAD_TINT, INK,
-                                            MASTER_BLUE, MUTED, RULE, UNIT, money)
-from bot.domain.extraction import CODE_COLUMN, NAME_COLUMN, Extraction
-from bot.domain.money_flow import INTERNAL_HUB, Item, fold, hubs, transfer_summary
+                                            MASTER_BLUE, MUTED, RULE, UNIT)
+from bot.domain import report
+from bot.domain.extraction import Extraction
+from bot.domain.money_flow import Item, fold, hubs, transfer_summary
+from bot.domain.report import amount as _amount, summary_rows
 from bot.domain.request_fields import RequestFields
 from bot.domain.table import Table as DataTable
 
@@ -88,18 +90,9 @@ class SummaryPdfRenderer:
 
     def _summary_box(self, fields: RequestFields, source: str | None, groups, master_count: int,
                      table: DataTable) -> list:
-        """Label | value rows: what a reader needs before anything else."""
-        internal = sum(a for name, items in groups if name == INTERNAL_HUB for _, _, a in items)
-        numbers, *rest = [part.strip() for part in fields.request_number.split("|")]
-        rows = [("סך הפנייה", f"{fields.total_amount} {UNIT}" if fields.total_amount else ""),
-                ("העברה פנימית במשרד", money(internal) if internal else ""),
-                ("כספים קואליציוניים", fields.coalition_funds),
-                ("תוכניות מהמאסטר", f"{master_count} מתוך {len(set(table.column(CODE_COLUMN)))}"),
-                ("מס' פנייה", numbers)]
-        rows += [tuple(part.split(":", 1)) for part in rest if ":" in part]   # 'מספר פנייה לועדה: 65 עד 70'
-        rows.append(("תאריך", fields.date))
-        data = [[Paragraph(wrap_rtl_html(value.strip(), CONTENT_WIDTH - 4.5 * cm, FONT, size=11), BODY),
-                 _paragraph(label.strip(), BODY)] for label, value in rows if value.strip()]
+        """Label | value rows (report.summary_rows): what a reader needs before anything else."""
+        data = [[Paragraph(wrap_rtl_html(value, CONTENT_WIDTH - 4.5 * cm, FONT, size=11), BODY),
+                 _paragraph(label, BODY)] for label, value in summary_rows(fields, groups, master_count, table)]
         if source:
             href = escape(source, {'"': "&quot;"})
             data.append([Paragraph(f'<a href="{href}" color="#1155cc">{escape(source)}</a>', LINK),
@@ -229,39 +222,14 @@ def _rows_style() -> TableStyle:
 # ---- the budget table's content (no drawing) ----------------------------------
 
 def budget_table_rows(table: DataTable, master: set[str]) -> tuple[list[list[str]], list[tuple[int, int, int]]]:
-    """The budget table as the letter prints it, in logical (left-to-right) column order:
-    a header, then two rows per item — מ- with the 'from' amounts, ל- with the 'to' amounts.
-    The code, the name, שינוי (the first metric's change) and master (כן if the code is in `master`)
-    span both rows; `spans` lists them as (column, top row, bottom row). Amounts are formatted,
-    Hebrew is reordered."""
-    metrics = [c.removesuffix(" from") for c in table.columns if str(c).endswith(" from")]
-    header = ["מספר פרט", "שם הפרט", ""] + metrics + ["שינוי", "master"]
-    last = len(header) - 1
-    rows, spans = [[rtl(h) for h in header]], []
-    for item in table.records():
-        top = len(rows)
-        rows.append([str(item[CODE_COLUMN]), rtl(item[NAME_COLUMN]), rtl("מ-")]
-                    + [_amount(item.get(f"{m} from")) for m in metrics]
-                    + [_change(item, metrics), rtl("כן" if item[CODE_COLUMN] in master else "לא")])
-        rows.append(["", "", rtl("ל-")] + [_amount(item.get(f"{m} to")) for m in metrics] + ["", ""])
-        spans += [(col, top, top + 1) for col in (0, 1, last - 1, last)]
+    """report.budget_table_rows with its text reordered for display; amounts are left as they are,
+    so a number's digits and leading minus sign are not reordered."""
+    rows, spans = report.budget_table_rows(table, master)
+    last = len(rows[0]) - 1
+    text_columns = (1, 2, last)                     # name, מ-/ל-, כן/לא
+    rows = [[rtl(h) for h in rows[0]]] + [[rtl(c) if i in text_columns else c for i, c in enumerate(row)]
+                                          for row in rows[1:]]
     return rows, spans
-
-
-def _change(item, metrics: list[str]) -> str:
-    """'to' minus 'from' for the first metric that has both, formatted; '' if none does."""
-    for m in metrics:
-        before, after = item.get(f"{m} from"), item.get(f"{m} to")
-        if before is not None and after is not None:
-            return _amount(float(after) - float(before))
-    return ""
-
-
-def _amount(value) -> str:
-    try:
-        return f"{float(value):,.0f}" if value is not None else ""
-    except (TypeError, ValueError):
-        return ""
 
 
 # ---- drawing building blocks ---------------------------------------------------
