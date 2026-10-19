@@ -37,7 +37,7 @@ export function LettersTable({ status }: { status?: LetterStatusFilter }) {
                   <TableHead className="text-start">משרד</TableHead>
                   <TableHead className="w-28 text-start">סטטוס</TableHead>
                   <TableHead className="w-28 text-start">נשלח לאחרונה</TableHead>
-                  <TableHead className="w-44">
+                  <TableHead className="w-56">
                     <span className="sr-only">פעולות</span>
                   </TableHead>
                 </TableRow>

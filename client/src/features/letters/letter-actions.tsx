@@ -1,13 +1,11 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiError } from "../../services/api";
 import { Button } from "../../components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogTrigger,
-} from "../../components/ui/alert-dialog";
-import { ConfirmDialog } from "../../components/confirm-dialog";
+import { AlertDialog } from "../../components/ui/alert-dialog";
 import { useAnalyzeLetter } from "../../hooks/use-analyze-letter";
 import { useSendLetter } from "../../hooks/use-send-letter";
+import { ReanalyzeMenu } from "./reanalyze-menu";
 import { SendConfirmDialog } from "./send-confirm-dialog";
 import type { LetterItem } from "./types";
 
@@ -21,6 +19,7 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
     ["discovered", "failed"].includes(status) ||
     (analyzed && letter.needs_analysis);
   const canReanalyze = analyzed || letter.legacy;
+  const hasReport = analyzed && !letter.legacy;
   const canSend =
     analyzed && letter.relevant && letter.complete && !letter.legacy;
   const sendBlocker = !analyzed
@@ -46,7 +45,12 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
       },
     );
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap justify-end gap-1">
+      {hasReport ? (
+        <Button asChild variant="outline" size="sm">
+          <Link to={`/letters/${slug}`}>צפייה</Link>
+        </Button>
+      ) : null}
       {canAnalyze ? (
         <Button
           variant="outline"
@@ -56,22 +60,6 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
         >
           ניתוח
         </Button>
-      ) : null}
-      {canReanalyze ? (
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="ghost" size="sm">
-              ניתוח מחדש
-            </Button>
-          </AlertDialogTrigger>
-          <ConfirmDialog
-            title="לנתח מחדש?"
-            description="ניתוח מחדש יעלה קריאה נוספת למודל"
-            action="ניתוח מחדש"
-            pending={analyze.isPending}
-            onConfirm={() => analyze.mutate({ slug, reanalyze: true })}
-          />
-        </AlertDialog>
       ) : null}
       <span title={canSend ? undefined : sendBlocker}>
         <Button
@@ -90,6 +78,7 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
           onConfirm={() => sendNow(true)}
         />
       </AlertDialog>
+      {canReanalyze ? <ReanalyzeMenu slug={slug} /> : null}
     </div>
   );
 }

@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { TableCell, TableRow } from "../../components/ui/table";
 import { dateTime, day } from "../../utils/date-time";
 import { LetterActions } from "./letter-actions";
@@ -7,20 +6,11 @@ import { LetterStatusBadge } from "./letter-status-badge";
 import type { LetterItem } from "./types";
 
 export function LetterRow({ letter }: { letter: LetterItem }) {
-  const hasReport = letter.analysis_status === "analyzed" && !letter.legacy;
   const date = letter.letter_date ? day(letter.letter_date) : "—";
   const numbers = letter.request_numbers.join(", ");
   return (
     <TableRow>
-      <TableCell className="whitespace-nowrap">
-        {hasReport ? (
-          <Link className="underline" to={`/letters/${letter.slug}`}>
-            {date}
-          </Link>
-        ) : (
-          date
-        )}
-      </TableCell>
+      <TableCell className="whitespace-nowrap">{date}</TableCell>
       <OverflowCell dir="ltr" className="font-mono" hint={numbers}>
         {numbers || "—"}
       </OverflowCell>
