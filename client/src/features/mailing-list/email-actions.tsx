@@ -1,8 +1,5 @@
 import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { write } from "../../services/api";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -17,17 +14,14 @@ import {
 import { ConfirmDialog } from "../../components/confirm-dialog";
 import { EmailForm } from "./email-form";
 
-export function EmailActions({ email }: { email: string }) {
+export function EmailActions({
+  email,
+  onDelete,
+}: {
+  email: string;
+  onDelete: () => void;
+}) {
   const [edit, setEdit] = useState(false);
-  const queryClient = useQueryClient();
-  const remove = useMutation({
-    mutationFn: () =>
-      write("/api/v1/mailing_list", "DELETE", { email }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["mailing"] });
-    },
-    onError: () => toast.error("לא ניתן למחוק את הנמען"),
-  });
   return (
     <div className="float-left flex gap-1">
       <Dialog open={edit} onOpenChange={setEdit}>
@@ -64,8 +58,7 @@ export function EmailActions({ email }: { email: string }) {
           description={`הכתובת ${email} תוסר מרשימת התפוצה.`}
           action="מחיקת נמען"
           destructive
-          pending={remove.isPending}
-          onConfirm={() => remove.mutate()}
+          onConfirm={onDelete}
         />
       </AlertDialog>
     </div>

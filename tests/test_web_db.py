@@ -49,3 +49,23 @@ def test_duplicate_address_is_400_and_not_logged(migrated_db, monkeypatch, caplo
     assert "duplicate@example.com" not in caplog.text
     with connection() as conn:
         conn.execute("DELETE FROM mailing_list WHERE email = %s", ("duplicate@example.com",))
+
+
+def test_delete_recipient_uses_json_body(migrated_db, monkeypatch):
+    monkeypatch.setenv("SITE_ORIGIN", "https://berl.site")
+    monkeypatch.setenv("NEON_AUTH_BASE_URL", "https://auth.example")
+    monkeypatch.setattr("web.auth.requests.get", lambda *args, **kwargs: SessionResponse())
+    connection = lambda: psycopg.connect(migrated_db, row_factory=dict_row)
+    monkeypatch.setattr("web.routes.mailing_list.connect", connection)
+    with connection() as conn:
+        conn.execute("DELETE FROM mailing_list WHERE email = %s", ("gone@example.com",))
+        conn.execute("INSERT INTO mailing_list (email) VALUES (%s)", ("gone@example.com",))
+    app = Flask(__name__)
+    register_csrf(app)
+    app.register_blueprint(mailing_list_bp)
+    client = app.test_client()
+    headers = {"Origin": "https://berl.site"}
+    assert client.delete("/api/v1/mailing_list", json={"email": "gone@example.com"}, headers=headers).status_code == 200
+    assert client.delete("/api/v1/mailing_list", json={"email": "gone@example.com"}, headers=headers).status_code == 404
+    with connection() as conn:
+        assert conn.execute("SELECT email FROM mailing_list WHERE email = %s", ("gone@example.com",)).fetchone() is None

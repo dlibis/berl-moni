@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { startTransition, useMemo, useOptimistic, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
+import { toast } from "sonner";
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
 import { Input } from "../../components/ui/input";
@@ -13,21 +15,46 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { Pagination } from "../../components/pagination";
+import { write } from "../../services/api";
 import { EmailActions } from "./email-actions";
-import { useMailingList } from "../../hooks/use-mailing-list";
+import { useMailingList, type Mailing } from "../../hooks/use-mailing-list";
 
 export function RecipientList() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const mailing = useMailingList();
+  const queryClient = useQueryClient();
+  const [emails, removeEmail] = useOptimistic(
+    mailing.data?.emails ?? [],
+    (current, email: string) => current.filter((item) => item !== email),
+  );
   const filtered = useMemo(
     () =>
-      (mailing.data?.emails ?? []).filter((email) =>
-        email.includes(search.trim().toLowerCase()),
-      ),
-    [mailing.data, search],
+      emails.filter((email) => email.includes(search.trim().toLowerCase())),
+    [emails, search],
   );
   const rows = filtered.slice(page * 25, page * 25 + 25);
+
+  function handleDelete(email: string) {
+    startTransition(async () => {
+      removeEmail(email);
+      try {
+        await write("/api/v1/mailing_list", "DELETE", { email });
+        queryClient.setQueryData<Mailing>(["mailing"], (old) =>
+          old
+            ? {
+                ...old,
+                emails: old.emails.filter((item) => item !== email),
+                count: Math.max(0, old.count - 1),
+              }
+            : old,
+        );
+      } catch {
+        toast.error("לא ניתן למחוק את הנמען");
+      }
+    });
+  }
+
   if (mailing.isPending) return <Loading />;
   if (mailing.isError || !mailing.data) return <ErrorState />;
   return (
@@ -74,7 +101,10 @@ export function RecipientList() {
                   <TableRow key={email}>
                     <TableCell dir="ltr">{email}</TableCell>
                     <TableCell>
-                      <EmailActions email={email} />
+                      <EmailActions
+                        email={email}
+                        onDelete={() => handleDelete(email)}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -84,7 +114,10 @@ export function RecipientList() {
           <div className="mt-5 space-y-3 md:hidden">
             {rows.map((email) => (
               <div key={email} className="rounded-lg border bg-card p-4">
-                <EmailActions email={email} />
+                <EmailActions
+                  email={email}
+                  onDelete={() => handleDelete(email)}
+                />
                 <p dir="ltr" className="truncate text-sm">
                   {email}
                 </p>

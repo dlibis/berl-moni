@@ -55,7 +55,7 @@ def test_every_v1_route_requires_session(app, monkeypatch):
     client = app.test_client()
     for rule in app.url_map.iter_rules():
         if rule.rule.startswith("/api/v1/"):
-            path = rule.rule.replace("<old_code>", "1").replace("<code>", "1").replace("<path:email>", "a@example.com").replace("<slug>", "letter").replace("<int:run_id>", "1")
+            path = rule.rule.replace("<old_code>", "1").replace("<code>", "1").replace("<slug>", "letter").replace("<int:run_id>", "1")
             method = next(iter(rule.methods - {"HEAD", "OPTIONS"}))
             response = client.open(path, method=method, json={} if method != "GET" else None, headers={"Origin": "https://berl.site"})
             assert response.status_code == 401, (rule.rule, method)
