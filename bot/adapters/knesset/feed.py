@@ -1,9 +1,13 @@
 """Knesset feed client: fetch_letters() lists the budget-transfer requests pending in the Finance Committee
-(requestStatus 2), one FeedLetter per PDF, reading every page of the feed. Raises FeedUnreachable."""
-from datetime import datetime
-from math import ceil
+(requestStatus 2), one FeedLetter per PDF, reading every page of the feed. Raises FeedUnreachable.
 
-from requests import RequestException, post
+letter_date is the PDF's HTTP Last-Modified (its upload day in Israel): the feed's ApprovedDate stays
+empty until the committee discusses a letter, so it is missing for nearly every pending one."""
+from email.utils import parsedate_to_datetime
+from math import ceil
+from zoneinfo import ZoneInfo
+
+from requests import RequestException, head, post
 
 from bot.domain.errors import FeedUnreachable
 from bot.domain.feed import FeedLetter
@@ -11,6 +15,7 @@ from bot.domain.feed import FeedLetter
 FEED_URL = "https://www.knesset.gov.il/WebSiteApi/knessetapi/CommitteeReports/GetCommitteePortalsBudget"
 PAGE_SIZE = 10
 PAGE_TIMEOUT = 30
+ISRAEL = ZoneInfo("Asia/Jerusalem")
 
 
 def _get_page(page_num):
@@ -57,12 +62,20 @@ def fetch_letters():
     return [_letter(url, group) for url, group in by_url.items()]
 
 
+def _uploaded_on(url):
+    try:
+        response = head(url, timeout=PAGE_TIMEOUT)
+        response.raise_for_status()
+        return parsedate_to_datetime(response.headers["Last-Modified"]).astimezone(ISRAEL).date()
+    except (RequestException, KeyError, ValueError, TypeError):
+        return None  # a missing date must not drop the letter
+
+
 def _letter(url, rows):
-    dates = [datetime.fromisoformat(row["ApprovedDate"]).date() for row in rows if row.get("ApprovedDate")]
     numbers = dict.fromkeys(row["RequestNumberRange"] for row in rows if row.get("RequestNumberRange"))
     return FeedLetter(
         url=url,
-        letter_date=min(dates, default=None),
+        letter_date=_uploaded_on(url),
         ministry=next((row["GovMinistryName"] for row in rows if row.get("GovMinistryName")), ""),
         request_numbers=tuple(numbers),
         rows=tuple({k: v for k, v in row.items() if k not in ("Description", "TotalCount")} for row in rows),

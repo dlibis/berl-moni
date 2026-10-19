@@ -1,6 +1,6 @@
 """The Knesset feed is read in pages of 10 until TotalCount rows are in hand.
 
-requests.post is stubbed; no network.
+requests.post and requests.head are stubbed; no network.
 """
 import json
 from datetime import date
@@ -11,6 +11,18 @@ import requests
 
 from bot.adapters.knesset.feed import fetch_letters
 from bot.domain.errors import FeedUnreachable
+
+
+LAST_MODIFIED = "Wed, 16 Sep 2026 22:05:24 GMT"  # already the 17th in Israel
+
+
+@pytest.fixture(autouse=True)
+def _head():
+    response = requests.Response()
+    response.status_code = 200
+    response.headers["Last-Modified"] = LAST_MODIFIED
+    with mock.patch("bot.adapters.knesset.feed.head", return_value=response) as head:
+        yield head
 
 
 def _rows(urls, total=None):
@@ -93,11 +105,17 @@ def test_rows_sharing_a_pdf_become_one_letter():
             _row("u2", "20-001", "2026-07-15T03:00:00", "חינוך")]
     with _pages(rows):
         [a, b] = fetch_letters()
-    assert (a.url, a.letter_date, a.request_numbers) == ("u1", date(2026, 7, 10), ("13-206", "13-207"))
+    assert (a.url, a.letter_date, a.request_numbers) == ("u1", date(2026, 9, 17), ("13-206", "13-207"))
     assert a.ministry == "הוצאות שונות" and "Description" not in a.rows[0] and b.url == "u2"
     assert "TotalCount" not in a.rows[0]
 
 
-def test_missing_date_is_none():
+def test_date_ignores_approved_date():
     with _pages([_row("u1", date=None) | {"TotalCount": 1}]):
+        assert fetch_letters()[0].letter_date == date(2026, 9, 17)
+
+
+def test_failed_head_keeps_letter_without_date(_head):
+    _head.side_effect = requests.exceptions.Timeout()
+    with _pages([_row("u1") | {"TotalCount": 1}]):
         assert fetch_letters()[0].letter_date is None

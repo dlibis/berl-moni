@@ -54,7 +54,7 @@ class LettersRepository:
             row = self.conn.execute(
                 "INSERT INTO letters (letter_url, slug, analysis_status, letter_date, ministry, request_numbers, "
                 "feed_rows, last_seen_in_feed_at) VALUES (%s, %s, %s, %s, %s, %s, %s, now()) "
-                "ON CONFLICT (letter_url) DO UPDATE SET letter_date = EXCLUDED.letter_date, "
+                "ON CONFLICT (letter_url) DO UPDATE SET letter_date = COALESCE(EXCLUDED.letter_date, letters.letter_date), "
                 "ministry = EXCLUDED.ministry, request_numbers = EXCLUDED.request_numbers, "
                 "feed_rows = EXCLUDED.feed_rows, last_seen_in_feed_at = now() "
                 "RETURNING xmax = 0 AS inserted",
