@@ -4,9 +4,9 @@ Pure functions. No database, no network.
 """
 import math
 
-# Resend rejects an email over 40 MB including its attachments after Base64 encoding; 35 MB of
-# encoded PDFs leaves room for the body and the MIME headers.
-MAX_BATCH_BYTES = 35 * 1024 * 1024
+# Gmail rejects incoming email over 25 MB after Base64 encoding (Resend's own cap is 40 MB);
+# 24 MB of encoded PDFs leaves room for the body and the MIME headers.
+MAX_BATCH_BYTES = 24 * 1024 * 1024
 # Resend takes at most 50 addresses per message: the reply-to inbox in `to`, so 49 in `bcc`.
 # Must equal common.limits.CHUNK, which the web screens use for the same arithmetic.
 CHUNK_SIZE = 49

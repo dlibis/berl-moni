@@ -28,7 +28,8 @@ def send_email(*, from_address: str, reply_to: str, bcc: list[str],
                      "Idempotency-Key": idempotency_key},
             json={"from": from_address, "to": [reply_to], "reply_to": reply_to, "bcc": bcc,
                   "subject": subject, "html": html,
-                  "attachments": [{"filename": filename, "content": base64.b64encode(data).decode("ascii")}
+                  "attachments": [{"filename": filename, "content_type": "application/pdf",
+                                   "content": base64.b64encode(data).decode("ascii")}
                                   for filename, data in attachments]},
             timeout=60,
         )

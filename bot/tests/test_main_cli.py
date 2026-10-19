@@ -463,7 +463,7 @@ def test_parse_args_flags_are_exclusive():
 
 
 def test_oversized_pdf_is_counted_failed_and_not_sent(db, stubs):
-    stubs.urls, stubs.pdf = [A], b"%PDF" + bytes(30 * 2**20)  # rendered fine, but over the 35 MB cap once encoded
+    stubs.urls, stubs.pdf = [A], b"%PDF" + bytes(30 * 2**20)  # rendered fine, but over the 24 MB cap once encoded
     assert run(stubs) == 0
     [scan] = rows(db, "SELECT * FROM scans")
     assert (scan["status"], scan["relevant"], scan["failed"]) == ("nothing_new", 1, 1)

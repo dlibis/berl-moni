@@ -2,14 +2,14 @@
 from bot.domain import send_plan
 
 MB = 1024 * 1024
-# 22.5 MB raw encodes to exactly 30 MB, so two of them cannot share a 35 MB batch
-RAW_30MB_ENCODED = 22.5 * MB
+# 15 MB raw encodes to exactly 20 MB, so two of them cannot share a 24 MB batch
+RAW_20MB_ENCODED = 15 * MB
 ONE = ["a@example.com"]
 
 
-def test_two_batches_for_60mb_encoded():
-    # Raw 60 MB would need three batches (it encodes to 80 MB), so "60MB" here is encoded
-    letters = [("l0", int(RAW_30MB_ENCODED)), ("l1", int(RAW_30MB_ENCODED))]
+def test_two_batches_for_40mb_encoded():
+    # Raw 40 MB would need three batches (it encodes to 53 MB), so "40MB" here is encoded
+    letters = [("l0", RAW_20MB_ENCODED), ("l1", RAW_20MB_ENCODED)]
     out, oversized = send_plan.batches(letters)
     assert [[u for u, _ in b] for b in out] == [["l0"], ["l1"]]
     assert oversized == []
@@ -23,7 +23,7 @@ def test_pdf_over_cap_is_oversized_and_not_batched():
 
 
 def test_batch_order_preserved():
-    letters = [(f"l{i}", 10 * MB) for i in range(5)]
+    letters = [(f"l{i}", int(7.5 * MB)) for i in range(5)]  # 10 MB encoded: two per batch
     out, _ = send_plan.batches(letters)
     assert [[u for u, _ in b] for b in out] == [["l0", "l1"], ["l2", "l3"], ["l4"]]
 

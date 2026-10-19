@@ -1,4 +1,3 @@
-import { dateTime } from "../../utils/date-time";
 import type { LetterItem } from "./types";
 
 const base = "rounded-full px-2 py-0.5 text-xs";
@@ -36,14 +35,6 @@ export function LetterStatusBadge({ letter }: { letter: LetterItem }) {
           title={letter.last_error}
         >
           הניתוח האחרון נכשל
-        </span>
-      ) : null}
-      {letter.send_count > 0 ? (
-        <span
-          className={`${base} bg-primary/10 text-primary`}
-          title={dateTime(letter.last_sent_at ?? undefined)}
-        >
-          נשלח {dateTime(letter.last_sent_at ?? undefined)}
         </span>
       ) : null}
     </div>
