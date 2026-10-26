@@ -108,6 +108,7 @@ class Extraction:
     source_sha256: str = ""
     source_size: int = 0
     relevance_provenance: str | None = None  # JSON key RELEVANCE_PROVENANCE_KEY; paths (1)/(2) only
+    visual_scan: bool = False
 
     @staticmethod
     def _table_to_json(table: Table) -> dict:
@@ -121,6 +122,7 @@ class Extraction:
         """The versioned, program-independent extraction persisted by the worker."""
         return {
             "schema_version": SCHEMA_VERSION,
+            "visual_scan": self.visual_scan,
             "source": self.source,
             "scanned": self.scanned,
             "table": self._table_to_json(self.table),
@@ -141,6 +143,7 @@ class Extraction:
             source=data["source"],
             table=cls._table_from_json(data["table"]),
             scanned=data.get("scanned", False),
+            visual_scan=data.get("visual_scan", False),
             fields=fields,
             letterhead=list(data.get("letterhead", [])),
             budget_history=[
@@ -189,10 +192,11 @@ class Extractor:
     recorded as `extract_error`.
     """
 
-    def __init__(self, master_programs, analyze: Analyze, load: Load):
+    def __init__(self, master_programs, analyze: Analyze, load: Load, visual_scan=None):
         self.master = set(master_programs)
         self.analyze = analyze
         self.load = load
+        self.visual_scan = visual_scan
 
     # ------------------------------------------------------------------ entry
     def extract(self, source: str) -> Extraction:
@@ -201,19 +205,25 @@ class Extractor:
         scanned = letter.doc.scanned
         source_details = {"source_sha256": letter.source_sha256, "source_size": letter.source_size}
 
-        table = letter.extract_combined_table()
-        exact_bypass = exact_bypass_in_text(letter.doc.text)
-
-        bad_rows = letter.arithmetic_failures()
-        if bad_rows and not scanned:
-            raise ExtractionError(f"from + change != to in rows: {', '.join(bad_rows)}")
-
-        # Narrative from the pymupdf4llm text; the labelled fields (date, numbers) read
-        # better from the line-corrected text, except in a scan, which only has the OCR.
-        region = self._narrative_region(letter.doc.markdown)
+        if scanned:
+            if self.visual_scan is None:
+                raise ExtractionError("Visual scan extraction is not configured")
+            visual = self.visual_scan(letter.doc.path)
+            table, text, history = visual.table, visual.text, visual.history
+            region = self._narrative_region(text)
+            heading = re.search(r"עיקרי\s*הפניי?ה\s*:?|הפניי?ה\s*:\s*עיקרי", text)
+            if heading and text.find("תאריך הבקשה", heading.end()) == -1 and len(text) - heading.end() > NARRATIVE_MAX_CHARS:
+                raise ExtractionError("Scanned narrative boundary not found within input limit")
+        else:
+            table = letter.extract_combined_table()
+            text, history = letter.doc.text, letter.extract_budget_history()
+            bad_rows = letter.arithmetic_failures()
+            if bad_rows:
+                raise ExtractionError(f"from + change != to in rows: {', '.join(bad_rows)}")
+            region = self._narrative_region(letter.doc.markdown)
+        exact_bypass = exact_bypass_in_text(text)
         if not region:
             raise ExtractionError("heading 'עיקרי הפנייה' not found or has no text")
-        text = letter.doc.text
         # The ONE LLM call: coalition judgment + what each program's money is for.
         coalition, programs, usage = self.analyze(region)
         fields = RequestFields(
@@ -243,7 +253,7 @@ class Extractor:
             provenance = None
 
         return Extraction(source, table, scanned=scanned, fields=fields, **source_details,
-                          letterhead=letter.extract_letterhead(), budget_history=letter.extract_budget_history(),
+                          letterhead=letter.extract_letterhead(), budget_history=history, visual_scan=scanned,
                           llm_usage=usage, relevance_provenance=provenance)
 
     # --------------------------------------------------- deterministic tools

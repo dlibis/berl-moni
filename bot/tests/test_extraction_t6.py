@@ -90,11 +90,11 @@ def test_arithmetic_passes_on_real_letters(name):
     assert open_letter(str(FILES / name)).arithmetic_failures() == []
 
 
-def test_scan_is_ocrd_marked_and_relevant_by_table_codes(calls, scan_md):
-    result = _extract("pending_199_201_scan.pdf")
-    assert result.scanned and result.relevant_to(MASTER)
-    assert result.matched(MASTER)
-    assert len(calls) == 1 and calls[0].strip()
+def test_scan_without_visual_model_fails_closed(calls, monkeypatch):
+    monkeypatch.setattr(PdfDocument, "scanned", True)
+    with pytest.raises(ExtractionError, match="Visual scan extraction is not configured"):
+        _extract("pending_199_201_scan.pdf")
+    assert calls == []
 
 
 def test_scan_ocr_with_no_text_is_no_text_error(monkeypatch):
@@ -103,11 +103,6 @@ def test_scan_ocr_with_no_text_is_no_text_error(monkeypatch):
     with pytest.raises(NoTextError):
         PdfDocument(str(FILES / "pending_199_201_scan.pdf")).markdown
 
-
-def test_scan_with_unbalanced_rows_still_extracts(calls, scan_md, monkeypatch):
-    monkeypatch.setattr("bot.adapters.letter_pdf.parser.BudgetLetter.arithmetic_failures", lambda self: ["045203"])
-    result = _extract("pending_199_201_scan.pdf")
-    assert result.scanned and result.relevant_to(MASTER)  # OCR'd tables can't be checked; the PDF says 'verify'
 
 
 def test_scan_table_codes_come_from_table_rows_only(monkeypatch):

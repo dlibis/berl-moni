@@ -10,6 +10,7 @@ from bot.adapters.knesset.remote import KnessetClient
 from bot.adapters.letter_pdf.download import save_copy
 from bot.adapters.letter_pdf.loader import open_letter
 from bot.adapters.llm.letter_analyzer import LlmAnalyzer
+from bot.adapters.llm.visual_scan import read_document
 from bot.adapters.resend.email_sender import send_email
 from bot.adapters.summary_pdf.renderer import SummaryPdfRenderer
 from bot.domain.extraction import Extractor
@@ -34,7 +35,11 @@ def extractor(programs: dict) -> Extractor:
     """The Extractor with the configured model (MODEL_NAME, MODEL_PROVIDER, its key)."""
     client = _knesset_client()
     load = partial(open_letter, request_for=client.pdf_request) if client else open_letter
-    return Extractor(programs, analyze=LlmAnalyzer(**llm_settings()), load=load)
+    settings = llm_settings()
+    analyzer = LlmAnalyzer(**settings)
+    visual = partial(read_document, model=analyzer.model, provider=settings["provider"] or "openai",
+                     api_key=settings["api_key"])
+    return Extractor(programs, analyze=analyzer, load=load, visual_scan=visual)
 
 
 def model_name() -> str:

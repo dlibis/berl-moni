@@ -12,12 +12,18 @@ export function ReportStatus() {
   if (letter.isError) return <ErrorState />;
   const reason = lastErrorLabel(letter.data.last_error);
   if (letter.data.report)
-    return reason ? (
-      <p className="text-muted-foreground">
-        הניתוח האחרון נכשל. מוצג הניתוח השמור.
-        {" "}{reason}
-      </p>
-    ) : null;
+    return (
+      <>
+        {letter.data.report.header.scanned && letter.data.requires_review && (
+          <p className="text-muted-foreground">מכתב סרוק: יש לבדוק את הנתונים מול המקור לפני שימוש בדוח.</p>
+        )}
+        {reason && (
+          <p className="text-muted-foreground">
+            הניתוח האחרון נכשל. מוצג הניתוח השמור. {reason}
+          </p>
+        )}
+      </>
+    );
   if (reason) return <p className="text-destructive">{reason}</p>;
   return <p className="text-muted-foreground">הפנייה טרם נותחה</p>;
 }
