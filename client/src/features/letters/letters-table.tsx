@@ -14,9 +14,9 @@ import { LetterCard } from "./letter-card";
 import { LetterRow } from "./letter-row";
 import type { LetterStatusFilter } from "./types";
 
-export function LettersTable({ status }: { status?: LetterStatusFilter }) {
+export function LettersTable({ status, search }: { status?: LetterStatusFilter; search?: string }) {
   const [page, setPage] = useState(0);
-  const letters = useLetters({ page, status });
+  const letters = useLetters({ page, status, search });
   if (letters.isPending) return <Loading />;
   if (letters.isError) return <ErrorState />;
   const { items, total } = letters.data;
@@ -24,7 +24,7 @@ export function LettersTable({ status }: { status?: LetterStatusFilter }) {
     <>
       {items.length === 0 ? (
         <div className="rounded-lg border bg-card p-6 text-muted-foreground">
-          {status ? "אין פניות תואמות" : "אין פניות עדיין"}
+          {status || search ? "אין פניות תואמות" : "אין פניות עדיין"}
         </div>
       ) : (
         <>

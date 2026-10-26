@@ -118,3 +118,21 @@ def test_network_failure_after_all_retries_is_a_download_error(monkeypatch):
         download._download("https://example.test/letter.pdf")
 
     assert exc.value.status == 503
+
+
+def test_israeli_pdf_request_keeps_original_cache_key_and_retries(tmp_path, monkeypatch):
+    from bot.adapters.knesset.remote import KnessetClient
+    url = "https://fs.knesset.gov.il/globaldocs/FINANCE/example.pdf"
+    attempts = []
+    sleeps = []
+    monkeypatch.setattr(download.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(download.time, "sleep", sleeps.append)
+    def fetch(request, **kwargs):
+        attempts.append(request)
+        return Response(b"<html>blocked</html>" if len(attempts) == 1 else b"%PDF-1.7\n")
+    monkeypatch.setattr(download.urllib.request, "urlopen", fetch)
+    path = download.local_copy(url, request_for=KnessetClient("https://fetch.example", "test-token").pdf_request)
+    assert Path(path).name == hashlib.sha256(url.encode()).hexdigest() + ".pdf"
+    assert Path(path).read_bytes() == b"%PDF-1.7\n" and sleeps == [1]
+    assert attempts[0].get_header("Authorization") == "Bearer test-token"
+    assert attempts[0].full_url.startswith("https://fetch.example/pdf?url=")

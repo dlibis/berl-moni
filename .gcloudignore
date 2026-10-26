@@ -1,0 +1,20 @@
+# Upload only the read-only fetch service and the existing feed adapter it uses.
+**
+!.gcloudignore
+!cloud/
+!cloud/knesset_feed/
+!cloud/knesset_feed/app.py
+!cloud/knesset_feed/requirements.txt
+!cloud/knesset_feed/Dockerfile
+!cloud/knesset_feed/cloudbuild.yaml
+!bot/
+!bot/__init__.py
+!bot/adapters/
+!bot/adapters/__init__.py
+!bot/adapters/knesset/
+!bot/adapters/knesset/__init__.py
+!bot/adapters/knesset/feed.py
+!bot/domain/
+!bot/domain/__init__.py
+!bot/domain/errors.py
+!bot/domain/feed.py

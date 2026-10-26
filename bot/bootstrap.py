@@ -2,8 +2,11 @@
 builds the real adapters. Nothing else in bot/ reads the environment or wires dependencies.
 """
 import logging
+import os
+from functools import partial
 
 from bot.adapters.knesset.feed import fetch_letters
+from bot.adapters.knesset.remote import KnessetClient
 from bot.adapters.letter_pdf.download import save_copy
 from bot.adapters.letter_pdf.loader import open_letter
 from bot.adapters.llm.letter_analyzer import LlmAnalyzer
@@ -29,7 +32,9 @@ def setup() -> None:
 
 def extractor(programs: dict) -> Extractor:
     """The Extractor with the configured model (MODEL_NAME, MODEL_PROVIDER, its key)."""
-    return Extractor(programs, analyze=LlmAnalyzer(**llm_settings()), load=open_letter)
+    client = _knesset_client()
+    load = partial(open_letter, request_for=client.pdf_request) if client else open_letter
+    return Extractor(programs, analyze=LlmAnalyzer(**llm_settings()), load=load)
 
 
 def model_name() -> str:
@@ -37,6 +42,14 @@ def model_name() -> str:
     return LlmAnalyzer(**llm_settings()).model
 
 
+def _knesset_client() -> KnessetClient | None:
+    url = os.environ.get("KNESSET_FETCH_URL")
+    return KnessetClient(url, os.environ.get("KNESSET_FETCH_TOKEN", "")) if url else None
+
+
 def ports() -> Ports:
-    return Ports(feed=fetch_letters, extractor=extractor, render=SummaryPdfRenderer().render, send_email=send_email,
-                 save_copy=save_copy, model=model_name())
+    client = _knesset_client()
+    return Ports(feed=client.fetch_letters if client else fetch_letters, extractor=extractor,
+                 render=SummaryPdfRenderer().render, send_email=send_email,
+                 save_copy=partial(save_copy, request_for=client.pdf_request) if client else save_copy,
+                 model=model_name())

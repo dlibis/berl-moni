@@ -19,6 +19,7 @@ ISRAEL = ZoneInfo("Asia/Jerusalem")
 
 
 def _get_page(page_num):
+    response = None
     try:
         response = post(
             FEED_URL,
@@ -33,7 +34,9 @@ def _get_page(page_num):
         response.raise_for_status()
         rows = response.json()
     except (RequestException, ValueError) as error:
-        raise FeedUnreachable(f"page {page_num}: {type(error).__name__}") from error
+        detail = (f"HTTP {response.status_code}, content-type {response.headers.get('Content-Type', 'missing')}"
+                  if response is not None else "no response")
+        raise FeedUnreachable(f"page {page_num}: {type(error).__name__} ({detail})") from error
     if not isinstance(rows, list):
         raise FeedUnreachable(f"page {page_num}: body is not a list")
     return rows

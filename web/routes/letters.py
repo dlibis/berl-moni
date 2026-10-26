@@ -1,4 +1,4 @@
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 from bot.domain.errors import FeedUnreachable
 from bot.service_layer.analysis import refresh_feed, request_analysis
@@ -27,7 +27,7 @@ def get_letters():
         return jsonify({"error": "invalid query"}), 400
     with connect() as conn:
         items, total = list_letters(conn, page=page, page_size=page_size, status=status,
-                                    programs=list(load_programs(conn)))
+                                    programs=list(load_programs(conn)), search=request.args.get("search", "").strip())
     return jsonify({"items": items, "total": total})
 
 
@@ -62,7 +62,8 @@ def refresh():
             auto = (schedule_configured(uow.setting("schedule", []))
                     or uow.setting("fetch_every_hours") in FETCH_HOURS)
             result = refresh_feed(uow, bootstrap.ports().feed, auto=auto)
-        except FeedUnreachable:
+        except FeedUnreachable as error:
+            current_app.logger.warning("feed refresh failed: %s", error)
             return jsonify({"error": "feed_unreachable"}), 502
     return jsonify({"new": result.new, "seen": result.seen})
 

@@ -44,3 +44,5 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MODEL_NAME: ${{ vars.MODEL_NAME }}
           MODEL_PROVIDER: ${{ vars.MODEL_PROVIDER }}
+          KNESSET_FETCH_URL: ${{ vars.KNESSET_FETCH_URL }}
+          KNESSET_FETCH_TOKEN: ${{ secrets.KNESSET_FETCH_TOKEN }}

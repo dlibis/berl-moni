@@ -5,5 +5,5 @@ from bot.adapters.letter_pdf.parser import BudgetLetter
 from bot.adapters.letter_pdf.reader import PdfDocument
 
 
-def open_letter(source: str) -> BudgetLetter:
-    return BudgetLetter(PdfDocument(local_copy(source)), source)
+def open_letter(source: str, *, request_for=None) -> BudgetLetter:
+    return BudgetLetter(PdfDocument(local_copy(source, request_for=request_for)), source)

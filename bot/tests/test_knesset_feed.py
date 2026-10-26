@@ -76,6 +76,16 @@ def test_timeout_is_unreachable():
             fetch_letters()
 
 
+def test_html_response_reports_status_and_content_type():
+    response = requests.Response()
+    response.status_code = 200
+    response.headers["Content-Type"] = "text/html"
+    response._content = b"<html>Service unavailable</html>"
+    with mock.patch("bot.adapters.knesset.feed.post", return_value=response):
+        with pytest.raises(FeedUnreachable, match=r"page 1: JSONDecodeError \(HTTP 200, content-type text/html\)"):
+            fetch_letters()
+
+
 def test_non_list_body_is_unreachable():
     with _pages({"error": "maintenance"}):
         with pytest.raises(FeedUnreachable):

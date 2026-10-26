@@ -21,7 +21,7 @@ def _is_pdf(data: bytes) -> bool:
 
 
 
-def local_copy(source: str) -> str:
+def local_copy(source: str, *, request_for=None) -> str:
     """The PDF on disk: `source` itself if local, else the cached download (keyed by URL) — the
     download is the slow part, not the parsing."""
     if not source.startswith(("http://", "https://")):
@@ -32,21 +32,21 @@ def local_copy(source: str) -> str:
     if cache_file.exists() and not _is_pdf(cache_file.read_bytes()):
         cache_file.unlink()
     if not cache_file.exists():
-        cache_file.write_bytes(_download(source))
+        cache_file.write_bytes(_download(source, request=request_for(source)) if request_for else _download(source))
     return str(cache_file)
 
 
-def save_copy(source: str, dest: Path) -> None:
+def save_copy(source: str, dest: Path, *, request_for=None) -> None:
     """Copy the letter PDF (downloading a URL first) to `dest`, to eyeball it next to its summary."""
-    shutil.copyfile(local_copy(source), dest)
+    shutil.copyfile(local_copy(source, request_for=request_for), dest)
 
 
-def _download(url: str, attempts: int = 4) -> bytes:
+def _download(url: str, attempts: int = 4, *, request=None) -> bytes:
     """Retry network failures and non-PDF responses with backoff; never cache an error page."""
     last_error: Exception | None = None
     for attempt in range(attempts):
         try:
-            with urllib.request.urlopen(url, timeout=30) as response:
+            with urllib.request.urlopen(request if request is not None else url, timeout=30) as response:
                 data = response.read()
                 logger.info("PDF download %s attempt %d/%d: status=%s content_type=%r bytes=%d pdf_signature=%s",
                             letter_slug(url), attempt + 1, attempts, response.status,

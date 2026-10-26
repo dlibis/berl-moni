@@ -7,6 +7,7 @@ from functools import cache
 
 from bot.adapters.github.dispatch import dispatch_workflow
 from bot.adapters.knesset.feed import fetch_letters
+from bot.adapters.knesset.remote import KnessetClient
 from bot.adapters.resend.email_sender import send_email
 from bot.domain.extraction import Extraction
 from bot.service_layer.services import Ports
@@ -38,5 +39,7 @@ def _not_in_web(*args, **kwargs):
 
 
 def ports() -> Ports:
-    return Ports(feed=fetch_letters, extractor=_not_in_web, render=render, send_email=send_email,
+    url = os.environ.get("KNESSET_FETCH_URL")
+    feed = KnessetClient(url, os.environ.get("KNESSET_FETCH_TOKEN", "")).fetch_letters if url else fetch_letters
+    return Ports(feed=feed, extractor=_not_in_web, render=render, send_email=send_email,
                  save_copy=_not_in_web)

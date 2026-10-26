@@ -30,7 +30,7 @@ export function StatusFilter({
         onChange(v === "all" ? undefined : (v as LetterStatusFilter))
       }
     >
-      <SelectTrigger className="w-48" aria-label="סינון לפי סטטוס">
+      <SelectTrigger className="w-36" aria-label="סינון לפי סטטוס">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -10,15 +10,17 @@ export const LETTERS_PAGE_SIZE = 10;
 export function useLetters({
   page,
   status,
+  search,
 }: {
   page: number;
   status?: LetterStatusFilter;
+  search?: string;
 }) {
   return useQuery({
-    queryKey: ["letters", page, status],
+    queryKey: ["letters", page, status, search],
     queryFn: () =>
       get<LettersPage>(
-        `/api/v1/letters?page=${page + 1}&page_size=${LETTERS_PAGE_SIZE}${status ? `&status=${status}` : ""}`,
+        `/api/v1/letters?page=${page + 1}&page_size=${LETTERS_PAGE_SIZE}${status ? `&status=${status}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`,
       ),
     placeholderData: keepPreviousData,
     refetchInterval: (query) =>

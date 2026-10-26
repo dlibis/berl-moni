@@ -44,15 +44,18 @@ def all_letter_rows(conn, *, programs: list[str]) -> list[dict]:
 
 
 def list_letters(conn, *, page: int, page_size: int, status: str | None,
-                 programs: list[str]) -> tuple[list[dict], int]:
+                 programs: list[str], search: str = "") -> tuple[list[dict], int]:
     """(one page of items, the total matching `status`); `status` is a FILTERS key or None."""
     where = FILTERS[status] if status else "true"
+    if search:
+        where = f"({where}) AND strpos(lower(concat_ws(' ', ministry, array_to_string(request_numbers, ' '))), lower(%(search)s)) > 0"
     params = {
         "programs": list(programs),
         "prov_exact": PROVENANCE_EXACT_CLAUSES,
         "prov_coalition": PROVENANCE_COALITION_FUNDS,
         "limit": page_size,
         "offset": (page - 1) * page_size,
+        "search": search,
     }
     total = conn.execute(f"SELECT count(*) AS total FROM letters WHERE {where}", params).fetchone()["total"]
     rows = conn.execute(f"SELECT {COLUMNS} FROM letters WHERE {where} {ORDER} LIMIT %(limit)s OFFSET %(offset)s", params)

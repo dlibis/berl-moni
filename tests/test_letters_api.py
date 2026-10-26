@@ -97,6 +97,23 @@ def test_page_past_the_end_is_empty(client, seed):
     assert r == {"items": [], "total": 30}
 
 
+def test_search_ministry_and_request_numbers_before_pagination(client, db):
+    insert(db, 1)
+    insert(db, 2, status="failed")
+    insert(db, 3)
+    with db() as conn:
+        conn.execute("UPDATE letters SET ministry = %s, request_numbers = %s WHERE slug IN ('s1', 's2')",
+                     ("משרד ראש הממשלה", ["13-212,83-226,04-234", "199 עד 201"]))
+    for term in ("ראש הממשלה", "13-212", "83-226", "04-234", "199", "201"):
+        result = client.get("/api/v1/letters", query_string={"search": term, "page_size": 1}).get_json()
+        assert result["total"] == 2 and len(result["items"]) == 1
+    result = client.get("/api/v1/letters", query_string={"search": " הממשלה ", "status": "failed"}).get_json()
+    assert [item["slug"] for item in result["items"]] == ["s2"]
+    for term in ("missing", "%", "_", "' OR true --"):
+        assert client.get("/api/v1/letters", query_string={"search": term}).get_json() == {"items": [], "total": 0}
+    assert client.get("/api/v1/letters", query_string={"search": "  "}).get_json()["total"] == 3
+
+
 def test_bad_query_is_400(client):
     assert client.get("/api/v1/letters?page_size=500").status_code == 400
     assert client.get("/api/v1/letters?status=nope").status_code == 400
