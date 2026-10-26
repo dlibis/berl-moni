@@ -16,9 +16,11 @@ import { EmailForm } from "./email-form";
 
 export function EmailActions({
   email,
+  name,
   onDelete,
 }: {
   email: string;
+  name: string;
   onDelete: () => void;
 }) {
   const [edit, setEdit] = useState(false);
@@ -39,7 +41,11 @@ export function EmailActions({
           <DialogTitle className="text-xl font-semibold">
             עריכת נמען
           </DialogTitle>
-          <EmailForm initial={email} onDone={() => setEdit(false)} />
+          <EmailForm
+            initialEmail={email}
+            initialName={name}
+            onDone={() => setEdit(false)}
+          />
         </DialogContent>
       </Dialog>
       <AlertDialog>

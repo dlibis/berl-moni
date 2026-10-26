@@ -6,6 +6,7 @@ from .status import status_bp
 from .recovery import recovery_bp
 from .auth_proxy import auth_proxy_bp
 from .letters import letters_bp
+from .export import export_bp
 
 
 def register_routes(app):
@@ -17,3 +18,4 @@ def register_routes(app):
     app.register_blueprint(recovery_bp)
     app.register_blueprint(auth_proxy_bp)
     app.register_blueprint(letters_bp)
+    app.register_blueprint(export_bp)

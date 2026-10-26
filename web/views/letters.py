@@ -32,6 +32,13 @@ FILTERS = {
 ORDER = "ORDER BY letter_date DESC NULLS LAST, letter_url"
 
 
+def all_letter_rows(conn, *, programs: list[str]) -> list[dict]:
+    """All letters (unfiltered), same row shape as list_letters items."""
+    params = {"programs": list(programs)}
+    rows = conn.execute(f"SELECT {COLUMNS} FROM letters {ORDER}", params)
+    return [_item(row) for row in rows]
+
+
 def list_letters(conn, *, page: int, page_size: int, status: str | None,
                  programs: list[str]) -> tuple[list[dict], int]:
     """(one page of items, the total matching `status`); `status` is a FILTERS key or None."""

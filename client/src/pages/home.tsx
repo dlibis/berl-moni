@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PageHeader } from "../components/page-header";
 import { LettersTable } from "../features/letters/letters-table";
+import { ExportButton } from "../features/letters/export-button";
 import { RefreshButton } from "../features/letters/refresh-button";
 import { StatusFilter } from "../features/letters/status-filter";
 import type { LetterStatusFilter } from "../features/letters/types";
@@ -14,6 +15,7 @@ export function Home() {
       <PageHeader title="ראשי" detail={<LastScanLine />}>
         <div className="flex flex-wrap items-center gap-2">
           <StatusFilter value={status} onChange={setStatus} />
+          <ExportButton />
           <RefreshButton />
         </div>
       </PageHeader>

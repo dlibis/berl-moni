@@ -17,34 +17,36 @@ import {
 import { Pagination } from "../../components/pagination";
 import { write } from "../../services/api";
 import { EmailActions } from "./email-actions";
-import { useMailingList, type Mailing } from "../../hooks/use-mailing-list";
+import { useMailingList, type Mailing, type Subscriber } from "../../hooks/use-mailing-list";
 
 export function RecipientList() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const mailing = useMailingList();
   const queryClient = useQueryClient();
-  const [emails, removeEmail] = useOptimistic(
-    mailing.data?.emails ?? [],
-    (current, email: string) => current.filter((item) => item !== email),
+  const [subscribers, removeSubscriber] = useOptimistic(
+    mailing.data?.subscribers ?? [],
+    (current, email: string) => current.filter((item) => item.email !== email),
   );
-  const filtered = useMemo(
-    () =>
-      emails.filter((email) => email.includes(search.trim().toLowerCase())),
-    [emails, search],
-  );
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return subscribers;
+    return subscribers.filter(
+      (s) => s.email.includes(q) || s.name.toLowerCase().includes(q),
+    );
+  }, [subscribers, search]);
   const rows = filtered.slice(page * 25, page * 25 + 25);
 
   function handleDelete(email: string) {
     startTransition(async () => {
-      removeEmail(email);
+      removeSubscriber(email);
       try {
         await write("/api/v1/mailing_list", "DELETE", { email });
         queryClient.setQueryData<Mailing>(["mailing"], (old) =>
           old
             ? {
                 ...old,
-                emails: old.emails.filter((item) => item !== email),
+                subscribers: old.subscribers.filter((item) => item.email !== email),
                 count: Math.max(0, old.count - 1),
               }
             : old,
@@ -75,7 +77,7 @@ export function RecipientList() {
               setSearch(e.target.value);
               setPage(0);
             }}
-            placeholder="חיפוש כתובת דוא״ל"
+            placeholder="חיפוש שם או כתובת דוא״ל"
             className="ps-10"
           />
         </div>
@@ -90,6 +92,7 @@ export function RecipientList() {
             <Table>
               <TableHeader className="bg-muted">
                 <TableRow>
+                  <TableHead className="text-start">שם</TableHead>
                   <TableHead className="text-start">כתובת דוא״ל</TableHead>
                   <TableHead>
                     <span className="sr-only">פעולות</span>
@@ -97,13 +100,15 @@ export function RecipientList() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((email) => (
-                  <TableRow key={email}>
-                    <TableCell dir="ltr">{email}</TableCell>
+                {rows.map((row: Subscriber) => (
+                  <TableRow key={row.email}>
+                    <TableCell>{row.name}</TableCell>
+                    <TableCell dir="ltr">{row.email}</TableCell>
                     <TableCell>
                       <EmailActions
-                        email={email}
-                        onDelete={() => handleDelete(email)}
+                        email={row.email}
+                        name={row.name}
+                        onDelete={() => handleDelete(row.email)}
                       />
                     </TableCell>
                   </TableRow>
@@ -112,14 +117,16 @@ export function RecipientList() {
             </Table>
           </div>
           <div className="mt-5 space-y-3 md:hidden">
-            {rows.map((email) => (
-              <div key={email} className="rounded-lg border bg-card p-4">
+            {rows.map((row: Subscriber) => (
+              <div key={row.email} className="rounded-lg border bg-card p-4">
                 <EmailActions
-                  email={email}
-                  onDelete={() => handleDelete(email)}
+                  email={row.email}
+                  name={row.name}
+                  onDelete={() => handleDelete(row.email)}
                 />
-                <p dir="ltr" className="truncate text-sm">
-                  {email}
+                <p className="font-medium">{row.name}</p>
+                <p dir="ltr" className="truncate text-sm text-muted-foreground">
+                  {row.email}
                 </p>
               </div>
             ))}

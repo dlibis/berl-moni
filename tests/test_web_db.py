@@ -40,11 +40,11 @@ def test_duplicate_address_is_400_and_not_logged(migrated_db, monkeypatch, caplo
     monkeypatch.setattr("web.routes.mailing_list.connect", connection)
     with connection() as conn:
         conn.execute("DELETE FROM mailing_list WHERE email = %s", ("duplicate@example.com",))
-        conn.execute("INSERT INTO mailing_list (email) VALUES (%s)", ("duplicate@example.com",))
+        conn.execute("INSERT INTO mailing_list (email, name) VALUES (%s, %s)", ("duplicate@example.com", "Dup"))
     app = Flask(__name__)
     register_csrf(app)
     app.register_blueprint(mailing_list_bp)
-    response = app.test_client().post("/api/v1/mailing_list", json={"email": "duplicate@example.com"}, headers={"Origin": "https://berl.site"})
+    response = app.test_client().post("/api/v1/mailing_list", json={"email": "duplicate@example.com", "name": "Other"}, headers={"Origin": "https://berl.site"})
     assert response.status_code == 400
     assert "duplicate@example.com" not in caplog.text
     with connection() as conn:
@@ -59,7 +59,7 @@ def test_delete_recipient_uses_json_body(migrated_db, monkeypatch):
     monkeypatch.setattr("web.routes.mailing_list.connect", connection)
     with connection() as conn:
         conn.execute("DELETE FROM mailing_list WHERE email = %s", ("gone@example.com",))
-        conn.execute("INSERT INTO mailing_list (email) VALUES (%s)", ("gone@example.com",))
+        conn.execute("INSERT INTO mailing_list (email, name) VALUES (%s, %s)", ("gone@example.com", "Gone"))
     app = Flask(__name__)
     register_csrf(app)
     app.register_blueprint(mailing_list_bp)

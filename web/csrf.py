@@ -12,6 +12,9 @@ def register_csrf(app):
             return None
         if request.headers.get("Origin") != os.environ["SITE_ORIGIN"]:
             return jsonify({"error": "forbidden"}), 403
-        if request.get_data(cache=True) and request.mimetype != "application/json":
+        if request.get_data(cache=True) and request.mimetype not in (
+            "application/json",
+            "multipart/form-data",
+        ):
             return jsonify({"error": "forbidden"}), 403
         return None

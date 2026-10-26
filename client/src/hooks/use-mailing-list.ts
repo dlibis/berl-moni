@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { get } from "../services/api";
 
-export type Mailing = { emails: string[]; count: number; cap: number };
+export type Subscriber = { email: string; name: string };
+export type Mailing = { subscribers: Subscriber[]; count: number; cap: number };
 
 export function useMailingList() {
   return useQuery({

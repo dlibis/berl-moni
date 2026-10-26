@@ -44,23 +44,34 @@ def _month(offset=0):
 def get_schedule():
     with connect() as conn:
         schedule = get_setting(conn, "schedule", [])
+        always_send = bool(get_setting(conn, "always_send", False))
         count = len(list_emails(conn))
         limit = int(get_setting(conn, "resend_monthly_limit", 3000))
     months = (_month(), _month(1))
-    return jsonify({"schedule": schedule, "projected_monthly_emails": {m.isoformat(): projected_monthly_emails(count, schedule, m) for m in months}, "monthly_limit": limit})
+    return jsonify({"schedule": schedule, "always_send": always_send,
+                    "projected_monthly_emails": {m.isoformat(): projected_monthly_emails(count, schedule, m) for m in months},
+                    "monthly_limit": limit})
 
 
 @schedule_bp.post("")
 @require_session
 def set_schedule():
     data = request.get_json(silent=True)
-    schedule = data.get("schedule") if isinstance(data, dict) else data
+    if not isinstance(data, dict):
+        return jsonify({"error": "invalid schedule"}), 400
+    schedule = data.get("schedule")
     if not _valid(schedule):
         return jsonify({"error": "invalid schedule"}), 400
+    always_send = data.get("always_send")
+    if always_send is not None and not isinstance(always_send, bool):
+        return jsonify({"error": "invalid always_send"}), 400
     with connect() as conn:
         was_on = schedule_configured(get_setting(conn, "schedule", []))
         set_setting(conn, "schedule", schedule)
+        if always_send is not None:
+            set_setting(conn, "always_send", always_send)
         if schedule_configured(schedule) != was_on:
             db_now = conn.execute("SELECT now() AS now").fetchone()["now"]  # the clock first_seen_at uses
             set_setting(conn, "auto_since", db_now.isoformat() if not was_on else None)
-    return jsonify({"schedule": schedule})
+        saved_always = bool(get_setting(conn, "always_send", False))
+    return jsonify({"schedule": schedule, "always_send": saved_always})
