@@ -4,6 +4,7 @@ import { ApiError } from "../../services/api";
 import { Button } from "../../components/ui/button";
 import { AlertDialog } from "../../components/ui/alert-dialog";
 import { useAnalyzeLetter } from "../../hooks/use-analyze-letter";
+import { usePatchLetter } from "../../hooks/use-patch-letter";
 import { useSendLetter } from "../../hooks/use-send-letter";
 import { ReanalyzeMenu } from "./reanalyze-menu";
 import { SendConfirmDialog } from "./send-confirm-dialog";
@@ -12,6 +13,7 @@ import type { LetterItem } from "./types";
 export function LetterActions({ letter }: { letter: LetterItem }) {
   const [confirmSend, setConfirmSend] = useState(false);
   const analyze = useAnalyzeLetter();
+  const patch = usePatchLetter();
   const send = useSendLetter();
   const { slug, analysis_status: status } = letter;
   const analyzed = status === "analyzed";
@@ -23,11 +25,11 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
   const canSend =
     analyzed && letter.relevant && letter.complete && !letter.legacy;
   const sendBlocker = !analyzed
-    ? "יש לנתח את המכתב לפני שליחה"
+    ? "יש לנתח את הפנייה לפני שליחה"
     : letter.legacy
       ? "יש לנתח מחדש לפני שליחה"
       : !letter.relevant
-        ? "המכתב לא רלוונטי"
+        ? "הפנייה לא רלוונטית"
         : "הניתוח לא הושלם";
   const sendNow = (resend = false) =>
     send.mutate(
@@ -79,6 +81,24 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
         />
       </AlertDialog>
       {canReanalyze ? <ReanalyzeMenu slug={slug} /> : null}
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={patch.isPending}
+        onClick={() =>
+          patch.mutate({ slug, requires_review: !letter.requires_review })
+        }
+      >
+        {letter.requires_review ? "בטל דורש עיון" : "דורש עיון"}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={patch.isPending}
+        onClick={() => patch.mutate({ slug, passed: !letter.passed })}
+      >
+        {letter.passed ? "לא עברה" : "עברה"}
+      </Button>
     </div>
   );
 }

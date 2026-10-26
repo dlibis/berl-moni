@@ -109,18 +109,38 @@ def test_detail_has_report_only_when_analyzed(client, analyzed_relevant, discove
     assert client.get("/api/v1/letters/unknown").status_code == 404
 
 
-def test_derived_flags_and_outdated_filter(client, db):
+def test_derived_flags_and_filters(client, db):
     insert(db, 1, complete_extraction(), "m|prompt:0|schema:1", "analyzed")
     incomplete = complete_extraction()
     incomplete.fields = None
     insert(db, 2, incomplete, analysis_version("m"), "analyzed")
     insert(db, 3)
+    insert(db, 4, status="queued")
+    insert(db, 5, status="analyzing")
     items = {i["slug"]: i for i in client.get("/api/v1/letters").get_json()["items"]}
     assert items["s1"]["relevant"] and items["s1"]["complete"] and items["s1"]["outdated"]
+    assert items["s1"]["requires_review"] is False and items["s1"]["passed"] is False
     assert items["s2"]["needs_analysis"] and not items["s2"]["outdated"]
     assert not items["s3"]["relevant"] and not items["s3"]["outdated"] and items["s3"]["request_numbers"] == []
-    assert [i["slug"] for i in client.get("/api/v1/letters?status=outdated").get_json()["items"]] == ["s1"]
+    not_analyzed = {i["slug"] for i in client.get("/api/v1/letters?status=not_analyzed").get_json()["items"]}
+    assert not_analyzed == {"s3", "s4", "s5"}
     assert [i["slug"] for i in client.get("/api/v1/letters?status=needs_analysis").get_json()["items"]] == ["s2"]
+    for bad in ("sent", "outdated", "queued"):
+        assert client.get(f"/api/v1/letters?status={bad}").status_code == 400
+
+
+def test_manual_flags_and_requires_review_filter(client, db, monkeypatch):
+    slug = insert(db, 50)
+    assert client.get(f"/api/v1/letters/{slug}").get_json()["passed"] is False
+    r = client.patch(f"/api/v1/letters/{slug}", json={"requires_review": True, "passed": True}, headers=ORIGIN)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["requires_review"] is True and body["passed"] is True
+    filtered = client.get("/api/v1/letters?status=requires_review").get_json()["items"]
+    assert [i["slug"] for i in filtered] == [slug]
+    monkeypatch.setattr("web.bootstrap.dispatch", lambda: True)
+    client.post(f"/api/v1/letters/{slug}/analyze", json={}, headers=ORIGIN)
+    assert client.get(f"/api/v1/letters/{slug}").get_json()["requires_review"] is True
 
 
 def test_session_user_reaches_g(client):

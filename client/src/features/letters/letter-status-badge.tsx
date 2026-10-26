@@ -6,16 +6,13 @@ function label({
   analysis_status,
   legacy,
   needs_analysis,
-  outdated,
   relevant,
 }: LetterItem) {
-  if (analysis_status === "discovered") return "לא נותח";
-  if (analysis_status === "queued") return "בתור";
-  if (analysis_status === "analyzing") return "בניתוח";
-  if (analysis_status === "failed") return "נכשל";
+  if (analysis_status === "failed") return "תקלה";
+  if (["discovered", "queued", "analyzing"].includes(analysis_status))
+    return "לא נותח";
   if (legacy) return "יש לנתח מחדש";
-  if (needs_analysis) return "דרוש ניתוח";
-  if (outdated) return "גרסה ישנה";
+  if (needs_analysis) return "דורשים ניתוח";
   return relevant ? "רלוונטי" : "לא רלוונטי";
 }
 
@@ -28,6 +25,14 @@ export function LetterStatusBadge({ letter }: { letter: LetterItem }) {
         title={failed ? (letter.last_error ?? undefined) : undefined}
       >
         {label(letter)}
+      </span>
+      {letter.requires_review ? (
+        <span className={`${base} bg-amber-500/15 text-amber-800`}>
+          דורש עיון
+        </span>
+      ) : null}
+      <span className={`${base} ${letter.passed ? "bg-green-500/15 text-green-800" : "bg-muted text-muted-foreground"}`}>
+        {letter.passed ? "עברה" : "לא עברה"}
       </span>
       {!failed && letter.last_error ? (
         <span

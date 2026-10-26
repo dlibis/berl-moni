@@ -24,7 +24,7 @@ export function LettersTable({ status }: { status?: LetterStatusFilter }) {
     <>
       {items.length === 0 ? (
         <div className="rounded-lg border bg-card p-6 text-muted-foreground">
-          {status ? "אין מכתבים תואמים" : "אין מכתבים עדיין"}
+          {status ? "אין פניות תואמות" : "אין פניות עדיין"}
         </div>
       ) : (
         <>

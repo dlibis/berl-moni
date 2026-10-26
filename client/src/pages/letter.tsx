@@ -14,7 +14,7 @@ export function Letter() {
   const letter = useLetter(slug).data;
   return (
     <>
-      <PageHeader title={letter?.request_numbers.join(", ") || "מכתב"}>
+      <PageHeader title={letter?.request_numbers.join(", ") || "פנייה"}>
         {letter ? <LetterActions letter={letter} /> : null}
       </PageHeader>
       <ReportStatus />
