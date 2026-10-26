@@ -68,7 +68,7 @@ export function LetterAnalysisIcon({ letter }: { letter: LetterItem }) {
       >
         <LoaderCircle
           size={16}
-          className={analyzing ? "animate-spin" : undefined}
+          className="animate-spin"
           aria-hidden
         />
       </HintIcon>
