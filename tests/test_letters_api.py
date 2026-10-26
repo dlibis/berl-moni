@@ -219,6 +219,7 @@ def test_refresh_counts_and_auto_since(client, monkeypatch):
         extractor=None, render=None, send_email=None, save_copy=None))
     r = client.post("/api/v1/letters/refresh", json={}, headers=ORIGIN)
     assert (r.status_code, r.get_json()) == (200, {"new": 1, "seen": 0})
+    assert client.get("/api/v1/status").get_json()["last_feed_refresh_at"]
     r = client.post("/api/v1/letters/refresh", json={}, headers=ORIGIN)
     assert r.get_json() == {"new": 0, "seen": 1}
 

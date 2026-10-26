@@ -19,6 +19,7 @@ export type FailedRun = {
 };
 export type Status = {
   latest_scan: Scan | null;
+  last_feed_refresh_at: string | null;
   next_scheduled_send_day: string | null;
   failed_send_run: FailedRun | null;
 };

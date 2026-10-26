@@ -20,6 +20,7 @@ def get_status():
         scan = conn.execute("SELECT * FROM scans ORDER BY ran_at DESC LIMIT 1").fetchone()
         run = conn.execute("SELECT id, day, failed_at, error, batches, recipients FROM send_runs WHERE status = 'failed' ORDER BY failed_at DESC LIMIT 1").fetchone()
         schedule = get_setting(conn, "schedule", [])
+        last_feed_refresh_at = get_setting(conn, "last_feed_refresh_at")
         sent = conn.execute("SELECT count(*) AS count FROM email_log WHERE idempotency_key LIKE %s", (f"run{run['id']}-%",)).fetchone()["count"] if run else 0
     next_day = None
     today = datetime.now(ISRAEL).date()
@@ -34,4 +35,4 @@ def get_status():
         chunks = (recipients + 48) // 49
         total = len(run["batches"] or []) * chunks
         failed_run = {"id": run["id"], "day": run["day"].isoformat(), "failed_at": run["failed_at"].isoformat(), "error": run["error"], "sent_messages": sent, "unsent_messages": max(total - sent, 0), "keys_expired": (datetime.now(timezone.utc) - run["failed_at"]).total_seconds() > 86400}
-    return jsonify({"latest_scan": _json(scan), "next_scheduled_send_day": next_day, "failed_send_run": failed_run})
+    return jsonify({"latest_scan": _json(scan), "last_feed_refresh_at": last_feed_refresh_at, "next_scheduled_send_day": next_day, "failed_send_run": failed_run})

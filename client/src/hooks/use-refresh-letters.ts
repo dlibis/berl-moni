@@ -12,6 +12,7 @@ export function useRefreshLetters() {
     onSuccess: (result) => {
       toast.success(`נמצאו ${result.new} פניות חדשות`);
       queryClient.invalidateQueries({ queryKey: ["letters"] });
+      queryClient.invalidateQueries({ queryKey: ["status"] });
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 502) {
