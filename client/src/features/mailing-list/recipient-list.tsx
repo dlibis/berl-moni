@@ -1,11 +1,8 @@
-import { startTransition, useMemo, useOptimistic, useState } from "react";
+import { startTransition, useOptimistic, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
-import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
 import {
   Table,
   TableBody,
@@ -20,7 +17,6 @@ import { EmailActions } from "./email-actions";
 import { useMailingList, type Mailing, type Subscriber } from "../../hooks/use-mailing-list";
 
 export function RecipientList() {
-  const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const mailing = useMailingList();
   const queryClient = useQueryClient();
@@ -28,14 +24,7 @@ export function RecipientList() {
     mailing.data?.subscribers ?? [],
     (current, email: string) => current.filter((item) => item.email !== email),
   );
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return subscribers;
-    return subscribers.filter(
-      (s) => s.email.includes(q) || s.name.toLowerCase().includes(q),
-    );
-  }, [subscribers, search]);
-  const rows = filtered.slice(page * 25, page * 25 + 25);
+  const rows = subscribers.slice(page * 25, page * 25 + 25);
 
   function handleDelete(email: string) {
     startTransition(async () => {
@@ -61,34 +50,13 @@ export function RecipientList() {
   if (mailing.isError || !mailing.data) return <ErrorState />;
   return (
     <>
-      <div className="max-w-xl">
-        <div className="relative">
-          <Label htmlFor="search" className="sr-only">
-            חיפוש נמען
-          </Label>
-          <Search
-            className="absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            size={16}
-          />
-          <Input
-            id="search"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-            placeholder="חיפוש שם או כתובת דוא״ל"
-            className="ps-10"
-          />
-        </div>
-      </div>
-      {filtered.length === 0 ? (
-        <div className="mt-6 rounded-lg border bg-card p-6 text-muted-foreground">
-          {search.trim() ? "לא נמצאו נמענים תואמים" : "אין נמענים עדיין"}
+      {subscribers.length === 0 ? (
+        <div className="rounded-lg border bg-card p-6 text-muted-foreground">
+          אין נמענים עדיין
         </div>
       ) : (
         <>
-          <div className="mt-5 hidden overflow-hidden rounded-lg border md:block">
+          <div className="hidden overflow-hidden rounded-lg border md:block">
             <Table>
               <TableHeader className="bg-muted">
                 <TableRow>
@@ -103,7 +71,9 @@ export function RecipientList() {
                 {rows.map((row: Subscriber) => (
                   <TableRow key={row.email}>
                     <TableCell>{row.name}</TableCell>
-                    <TableCell dir="ltr">{row.email}</TableCell>
+                    <TableCell>
+                      <span dir="ltr">{row.email}</span>
+                    </TableCell>
                     <TableCell>
                       <EmailActions
                         email={row.email}
@@ -116,7 +86,7 @@ export function RecipientList() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-5 space-y-3 md:hidden">
+          <div className="space-y-3 md:hidden">
             {rows.map((row: Subscriber) => (
               <div key={row.email} className="rounded-lg border bg-card p-4">
                 <EmailActions
@@ -131,7 +101,7 @@ export function RecipientList() {
               </div>
             ))}
           </div>
-          <Pagination page={page} count={filtered.length} setPage={setPage} />
+          <Pagination page={page} count={subscribers.length} setPage={setPage} />
         </>
       )}
     </>
