@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests
+from langchain_google_genai.chat_models import GoogleAPIError
 
 from bot.adapters.postgres.email_log import EmailLogRepository
 from bot.adapters.postgres.send_runs import SendRunsRepository
@@ -29,6 +30,24 @@ EVERY_DAY = [{"from": "2000-01-01", "to": "2099-12-31",
 
 class Quota(Exception):
     status_code = 429
+
+
+def model_overloaded():
+    return GoogleAPIError(503, {"error": {
+        "code": 503, "message": "This model is currently experiencing high demand. Please try again later.",
+        "status": "UNAVAILABLE",
+    }})
+
+
+@pytest.mark.parametrize("error, reason", [
+    (model_overloaded(), "model_overloaded"),
+    (GoogleAPIError(503, {"error": {"message": "The model is overloaded"}}), "model_overloaded"),
+    (GoogleAPIError(503, {"error": {"message": "Service unavailable"}}), "provider_5xx"),
+    (GoogleAPIError(500, {"error": {"message": "Internal server error"}}), "provider_5xx"),
+    (GoogleAPIError(429, {"error": {"message": "Resource exhausted"}}), "quota"),
+])
+def test_model_overload_has_a_specific_reason(error, reason):
+    assert services.failure_reason(error) == reason
 
 
 def letter(url):
@@ -204,6 +223,7 @@ def test_quota_with_nothing_analyzed_is_nothing_new(db, stubs):
     (DownloadError("https://x/1.pdf", 4, urllib.error.URLError("refused")), "network"),
     (NoTextError("x"), "no_text"),
     (ExtractionError("x"), "extract_error"),
+    (model_overloaded(), "model_overloaded"),
 ])
 def test_failures_are_recorded_and_the_run_continues(db, stubs, error, reason):
     stubs.urls, stubs.outcomes = [A, B], {A: error}

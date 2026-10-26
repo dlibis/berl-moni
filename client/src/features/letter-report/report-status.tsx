@@ -15,6 +15,7 @@ export function ReportStatus() {
     return reason ? (
       <p className="text-muted-foreground">
         הניתוח האחרון נכשל. מוצג הניתוח השמור.
+        {" "}{reason}
       </p>
     ) : null;
   if (reason) return <p className="text-destructive">{reason}</p>;

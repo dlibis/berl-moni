@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Protocol, TypedDict
+from typing import Callable, Literal, Protocol, TypedDict
 
 import requests
 
@@ -89,7 +89,7 @@ class ScanCounts(TypedDict, total=False):
     emails_sent: int
 
 
-def failure_reason(error: Exception) -> LetterReason:
+def failure_reason(error: Exception) -> LetterReason | Literal["model_overloaded"]:
     """Map an error from Extractor.extract to a `letters.reason`."""
     if isinstance(error, DownloadError):  # PdfDocument gave up after its retries
         return "provider_5xx" if (error.status or 0) >= 500 else "network"
@@ -98,6 +98,8 @@ def failure_reason(error: Exception) -> LetterReason:
                    if isinstance(s, int)), None)
     if status == 429 or re.search(r"quota|rate.?limit|resource.?exhausted", f"{type(error).__name__} {error}", re.I):
         return "quota"
+    if status == 503 and re.search(r"high demand|overloaded", str(error), re.I):
+        return "model_overloaded"
     if (status or 0) >= 500:
         return "provider_5xx"
     if isinstance(error, (requests.Timeout, requests.ConnectionError, urllib.error.URLError, TimeoutError)):
