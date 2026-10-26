@@ -80,7 +80,8 @@ def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], mod
                 logger.exception("%s: failed unexpectedly", letter_slug(url))
                 unexpected = True
             else:
-                logger.warning("%s: failed (%s, %s)", letter_slug(url), reason, type(error).__name__)
+                logger.warning("%s: failed (%s, %s)%s", letter_slug(url), reason, type(error).__name__,
+                               f": {error}" if isinstance(error, ExtractionError) else "")
             uow.letters.fail_analysis(url, lease, reason)
             uow.commit()
             if reason == "quota":

@@ -41,7 +41,7 @@ def test_malformed_pdf_is_a_handled_extraction_error(tmp_path):
     path = tmp_path / "malformed.pdf"
     path.write_bytes(b"%PDF-1.7\nnot a PDF")
 
-    with pytest.raises(ExtractionError, match="Could not parse PDF"):
+    with pytest.raises(ExtractionError, match="Could not parse PDF: .*No /Root object"):
         PdfDocument(str(path)).text
 
 

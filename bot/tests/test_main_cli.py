@@ -497,8 +497,10 @@ def test_unexpected_error_keeps_its_traceback_and_a_bad_letter_does_not(db, stub
         run(stubs)
     traced = {r.getMessage().split(":")[0] for r in caplog.records if r.exc_info}
     assert traced == {"1"}  # the KeyError (letter 1), not the unreadable letter 2
+    assert "2: failed (extract_error, ExtractionError): no heading" in caplog.text
 
 
-def test_no_email_exits_non_zero_when_a_letter_fails(db, stubs):
+def test_no_email_exits_non_zero_when_a_letter_fails(db, stubs, caplog):
     stubs.urls, stubs.outcomes = [A, B], {A: ExtractionError("no heading")}
     assert run(stubs, "--no-email") == 1
+    assert "1: failed (extract_error, ExtractionError): no heading" in caplog.text

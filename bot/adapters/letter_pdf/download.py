@@ -2,6 +2,7 @@
 once (with retries) into an on-disk cache and reused on later runs; a local path is returned as is.
 Raises DownloadError when every retry fails."""
 import hashlib
+import logging
 import shutil
 import tempfile
 import time
@@ -10,6 +11,9 @@ import urllib.request
 from pathlib import Path
 
 from bot.domain.errors import DownloadError, ExtractionError
+from bot.domain.slug import letter_slug
+
+logger = logging.getLogger(__name__)
 
 
 def _is_pdf(data: bytes) -> bool:
@@ -38,17 +42,22 @@ def save_copy(source: str, dest: Path) -> None:
 
 
 def _download(url: str, attempts: int = 4) -> bytes:
-    """Download url, retrying with backoff so a transient URLError doesn't abort the run."""
+    """Retry network failures and non-PDF responses with backoff; never cache an error page."""
     last_error: Exception | None = None
     for attempt in range(attempts):
         try:
             with urllib.request.urlopen(url, timeout=30) as response:
                 data = response.read()
+                logger.info("PDF download %s attempt %d/%d: status=%s content_type=%r bytes=%d pdf_signature=%s",
+                            letter_slug(url), attempt + 1, attempts, response.status,
+                            response.headers.get("Content-Type"), len(data), _is_pdf(data))
                 if not _is_pdf(data):
                     raise ExtractionError(f"Source did not return a PDF: {url}")
                 return data
-        except (urllib.error.URLError, TimeoutError) as error:
+        except (urllib.error.URLError, TimeoutError, ExtractionError) as error:
             last_error = error
             if attempt < attempts - 1:
                 time.sleep(2 ** attempt)  # 1s, 2s, 4s
+    if isinstance(last_error, ExtractionError):
+        raise last_error
     raise DownloadError(url, attempts, last_error)

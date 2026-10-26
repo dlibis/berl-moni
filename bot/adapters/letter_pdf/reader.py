@@ -63,7 +63,7 @@ class PdfDocument:
         try:
             return pdfplumber.open(self.path)
         except PdfminerException as error:
-            raise ExtractionError(f"Could not parse PDF: {self.path}") from error
+            raise ExtractionError(f"Could not parse PDF: {self.path}: {error}") from error
 
     def _is_header_page(self, page) -> bool:
         """True if the page contains HEADER (i.e. a budget-table page).

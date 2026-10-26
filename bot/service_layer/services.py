@@ -371,7 +371,8 @@ def render_all(uow, ports: Ports, out_dir: Path) -> int:
             if reason == "extract_error" and not isinstance(error, ExtractionError):
                 logger.exception("%s: failed unexpectedly", slug)
             else:
-                logger.warning("%s: failed (%s, %s)", slug, reason, type(error).__name__)
+                logger.warning("%s: failed (%s, %s)%s", slug, reason, type(error).__name__,
+                               f": {error}" if isinstance(error, ExtractionError) else "")
             failed += 1
             if reason == "quota":
                 logger.error("--no-email: the model quota ran out, %d letter(s) not scanned", len(urls) - i - 1)
