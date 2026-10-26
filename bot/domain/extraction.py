@@ -37,6 +37,36 @@ NARRATIVE_MAX_CHARS = 16_000
 # region -> (coalition 'כן'/'לא'/'אולי', what each program's money is for, token usage dict)
 Analyze = Callable[[str], "tuple[str, list[ProgramUses], dict | None]"]
 
+# Spec §2.1 exact-string bypass (literal substring on letter.doc.text — no OCR fuzzy match).
+EXACT_BYPASS_MARKERS = (
+    "כספים קואליציוניים: כן",
+    "יישום הסכמים פוליטיים בעלי משמעות תקציבית",
+)
+# Persisted under extraction JSON key `relevance_provenance` (not a DB column).
+RELEVANCE_PROVENANCE_KEY = "relevance_provenance"
+PROVENANCE_EXACT_CLAUSES = (
+    "Relevant due to explicit presence of Coalition Funds / Political Agreements clauses, "
+    "independent of master program matching."
+)
+PROVENANCE_COALITION_FUNDS = (
+    "Relevant due to coalition_funds = כן, independent of master program matching."
+)
+_FROZEN_PROVENANCE = frozenset({PROVENANCE_EXACT_CLAUSES, PROVENANCE_COALITION_FUNDS})
+
+
+def exact_bypass_in_text(text: str) -> bool:
+    return any(marker in text for marker in EXACT_BYPASS_MARKERS)
+
+
+def relevance_sql(programs_param: str = "%(programs)s::text[]") -> str:
+    """SQL for `is_relevant` on a `letters` row (same semantics as Extraction.is_relevant)."""
+    key = RELEVANCE_PROVENANCE_KEY
+    return (
+        f"(extraction->>'{key}' IN (%(prov_exact)s, %(prov_coalition)s) "
+        f"OR coalesce(extraction->'fields'->>'coalition_funds' = 'כן', false) "
+        f"OR coalesce(codes && {programs_param}, false))"
+    )
+
 
 class LetterText(Protocol):
     """The text representations and scan flag exposed by a loaded letter."""
@@ -77,6 +107,7 @@ class Extraction:
     llm_usage: dict | None = None   # model + token counts of the one LLM call, for the job log
     source_sha256: str = ""
     source_size: int = 0
+    relevance_provenance: str | None = None  # JSON key RELEVANCE_PROVENANCE_KEY; paths (1)/(2) only
 
     @staticmethod
     def _table_to_json(table: Table) -> dict:
@@ -100,6 +131,7 @@ class Extraction:
             "letterhead": self.letterhead,
             "fields": self.fields.model_dump() if self.fields is not None else None,
             "llm_usage": self.llm_usage,
+            RELEVANCE_PROVENANCE_KEY: self.relevance_provenance,
         }
 
     @classmethod
@@ -116,6 +148,7 @@ class Extraction:
                 for item in data.get("budget_history", [])
             ],
             llm_usage=data.get("llm_usage"),
+            relevance_provenance=data.get(RELEVANCE_PROVENANCE_KEY),
         )
 
     def codes(self) -> set[str]:
@@ -126,13 +159,22 @@ class Extraction:
         """The letter's codes that are in `programs`."""
         return self.codes() & set(programs)
 
+    def is_relevant(self, programs: Iterable[str]) -> bool:
+        """Spec §2: any of exact-clause bypass, coalition_funds כן, or master code match."""
+        if self.relevance_provenance in _FROZEN_PROVENANCE:
+            return True
+        if self.matched(programs):
+            return True
+        if self.fields is not None and self.fields.coalition_funds == "כן":
+            return True
+        return False
+
     def relevant_to(self, programs: Iterable[str]) -> bool:
-        """A summary is produced iff a letter code is in `programs`."""
-        return bool(self.matched(programs))
+        return self.is_relevant(programs)
 
     @property
     def complete(self) -> bool:
-        """The LLM part ran (an irrelevant letter stops before it)."""
+        """The LLM part ran."""
         return self.fields is not None
 
     def named_matches(self, programs: dict[str, str]) -> dict[str, str]:
@@ -159,10 +201,8 @@ class Extractor:
         scanned = letter.doc.scanned
         source_details = {"source_sha256": letter.source_sha256, "source_size": letter.source_size}
 
-        # Relevance first: an irrelevant letter makes no model call and no field checks.
         table = letter.extract_combined_table()
-        if not Extraction(source, table).relevant_to(self.master):
-            return Extraction(source, table, scanned=scanned, **source_details)
+        exact_bypass = exact_bypass_in_text(letter.doc.text)
 
         bad_rows = letter.arithmetic_failures()
         if bad_rows and not scanned:
@@ -195,9 +235,17 @@ class Extractor:
         if empty:
             raise ExtractionError(f"empty required field: {', '.join(empty)}")
 
+        stub = Extraction(source, table)
+        if exact_bypass:
+            provenance = PROVENANCE_EXACT_CLAUSES
+        elif fields.coalition_funds == "כן" and not stub.matched(self.master):
+            provenance = PROVENANCE_COALITION_FUNDS
+        else:
+            provenance = None
+
         return Extraction(source, table, scanned=scanned, fields=fields, **source_details,
                           letterhead=letter.extract_letterhead(), budget_history=letter.extract_budget_history(),
-                          llm_usage=usage)
+                          llm_usage=usage, relevance_provenance=provenance)
 
     # --------------------------------------------------- deterministic tools
     @staticmethod

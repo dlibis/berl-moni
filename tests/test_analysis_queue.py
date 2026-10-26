@@ -140,8 +140,8 @@ def test_newly_relevant_letter_needs_llm(uow, analyzed_irrelevant, add_program):
 def test_drain_analyzes_and_saves_json(uow, queued, fake_extractor):
     assert drain_queue(uow, lambda programs: fake_extractor, "m") == (1, False)
     row = uow.letters.get(queued)
-    assert row["analysis_status"] == "analyzed" and row["extraction"]["schema_version"] == 1
-    assert row["extraction_version"] == "m|prompt:1|schema:1" and row["codes"] == ["200101"]
+    assert row["analysis_status"] == "analyzed" and row["extraction"]["schema_version"] == 2
+    assert row["extraction_version"] == "m|prompt:1|schema:2" and row["codes"] == ["200101"]
     assert row["lease_id"] is None and row["analyzed_at"] and row["attempts"] == 1
 
 

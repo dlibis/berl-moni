@@ -3,7 +3,7 @@ import re
 
 
 PROMPT_VERSION = 1
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def analysis_version(model: str) -> str:

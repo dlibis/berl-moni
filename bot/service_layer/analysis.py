@@ -46,7 +46,7 @@ def request_analysis(uow, slug: str, user: str | None, dispatch: Callable[[], bo
         return AnalysisRequest("busy", False)
     if status == "analyzed" and not reanalyze:
         saved = letter["extraction"] and Extraction.from_json(letter["extraction"])
-        if not saved or saved.complete or not saved.relevant_to(uow.programs()):
+        if not saved or saved.complete or not saved.is_relevant(uow.programs()):
             return AnalysisRequest("done", False)
     if not uow.letters.queue(slug, user, (status,)):  # another request got there first
         uow.rollback()
