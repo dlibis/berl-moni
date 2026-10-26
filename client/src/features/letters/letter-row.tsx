@@ -1,8 +1,13 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { TableCell, TableRow } from "../../components/ui/table";
-import { dateTime, day } from "../../utils/date-time";
+import { day } from "../../utils/date-time";
 import { LetterActions } from "./letter-actions";
-import { LetterStatusBadge } from "./letter-status-badge";
+import {
+  LetterPassedBadge,
+  LetterReportCell,
+  LetterRelevantBadge,
+  RequiresReviewIcon,
+} from "./letter-status-badge";
 import type { LetterItem } from "./types";
 
 export function LetterRow({ letter }: { letter: LetterItem }) {
@@ -10,6 +15,9 @@ export function LetterRow({ letter }: { letter: LetterItem }) {
   const numbers = letter.request_numbers.join(", ");
   return (
     <TableRow>
+      <TableCell>
+        <RequiresReviewIcon show={letter.requires_review} />
+      </TableCell>
       <TableCell className="whitespace-nowrap">{date}</TableCell>
       <OverflowCell dir="ltr" className="font-mono" hint={numbers}>
         {numbers || "—"}
@@ -18,11 +26,16 @@ export function LetterRow({ letter }: { letter: LetterItem }) {
         {letter.ministry ?? "—"}
       </OverflowCell>
       <TableCell>
-        <LetterStatusBadge letter={letter} />
+        <LetterRelevantBadge letter={letter} />
       </TableCell>
-      <TableCell>{dateTime(letter.last_sent_at ?? undefined)}</TableCell>
       <TableCell>
-        <LetterActions letter={letter} />
+        <LetterPassedBadge passed={letter.passed} />
+      </TableCell>
+      <TableCell className="w-16 px-1 text-center">
+        <LetterReportCell letter={letter} />
+      </TableCell>
+      <TableCell className="w-12 px-1">
+        <LetterActions letter={letter} compact />
       </TableCell>
     </TableRow>
   );

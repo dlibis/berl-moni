@@ -62,7 +62,7 @@ def relevance_sql(programs_param: str = "%(programs)s::text[]") -> str:
     """SQL for `is_relevant` on a `letters` row (same semantics as Extraction.is_relevant)."""
     key = RELEVANCE_PROVENANCE_KEY
     return (
-        f"(extraction->>'{key}' IN (%(prov_exact)s, %(prov_coalition)s) "
+        f"(coalesce(extraction->>'{key}' IN (%(prov_exact)s, %(prov_coalition)s), false) "
         f"OR coalesce(extraction->'fields'->>'coalition_funds' = 'כן', false) "
         f"OR coalesce(codes && {programs_param}, false))"
     )
@@ -235,10 +235,9 @@ class Extractor:
         if empty:
             raise ExtractionError(f"empty required field: {', '.join(empty)}")
 
-        stub = Extraction(source, table)
         if exact_bypass:
             provenance = PROVENANCE_EXACT_CLAUSES
-        elif fields.coalition_funds == "כן" and not stub.matched(self.master):
+        elif fields.coalition_funds == "כן":
             provenance = PROVENANCE_COALITION_FUNDS
         else:
             provenance = None

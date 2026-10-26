@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { write } from "../../services/api";
 import { Button } from "../../components/ui/button";
@@ -16,13 +15,16 @@ import {
 } from "../../components/ui/select";
 import { ErrorState } from "../../components/error-state";
 import { Loading } from "../../components/loading";
-import { AddRangeButton } from "./add-range-button";
-import type { Day, Range } from "./types";
+import type { Day, Range, ScheduleData } from "./types";
+import { FAR, hasUntilDate, initialRange, today } from "./types";
 import { useSchedule } from "../../hooks/use-schedule";
-import {
-  useScheduleDraft,
-  useScheduleDraftApi,
-} from "../../contexts/schedule-draft";
+
+const FETCH_CADENCE: { value: string; label: string }[] = [
+  { value: "off", label: "כבוי" },
+  { value: "1", label: "כל שעה" },
+  { value: "6", label: "כל 6 שעות" },
+  { value: "24", label: "פעם ביום" },
+];
 
 const weekdays: [string, string][] = [
   ["sun", "א׳"],
@@ -37,181 +39,172 @@ const hours = Array.from(
   { length: 24 },
   (_, hour) => `${String(hour).padStart(2, "0")}:00`,
 );
+
+function toPayload(range: Range): Range {
+  const { from, days, to } = range;
+  if (hasUntilDate(range)) return { from, to, days };
+  return { from, to: FAR, days };
+}
+
+function RangeFields({
+  range,
+  setRange,
+  idPrefix,
+  timeAriaLabel,
+}: {
+  range: Range;
+  setRange: (update: (old: Range) => Range) => void;
+  idPrefix: string;
+  timeAriaLabel: string;
+}) {
+  function patch(change: Partial<Range>) {
+    setRange((old) => ({ ...old, ...change }));
+  }
+  function patchDay(key: string, change: Partial<Day>) {
+    setRange((old) => {
+      const existing = old.days[key] ?? { enabled: false, time: "08:00" };
+      return {
+        ...old,
+        days: { ...old.days, [key]: { ...existing, ...change } },
+      };
+    });
+  }
+  function setTime(time: string) {
+    setRange((old) => ({
+      ...old,
+      days: Object.fromEntries(
+        weekdays.map(([key]) => [
+          key,
+          { enabled: old.days[key]?.enabled ?? false, time },
+        ]),
+      ),
+    }));
+  }
+  function setUntil(on: boolean) {
+    setRange((old) => {
+      const { count: _c, ...rest } = old;
+      if (!on) return { ...rest, to: FAR };
+      return { ...rest, to: old.to < FAR ? old.to : today() };
+    });
+  }
+  const time =
+    Object.values(range.days).find((day) => day.enabled)?.time ?? "08:00";
+  const until = hasUntilDate(range);
+  const untilId = `${idPrefix}-until`;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div className="flex items-center gap-x-1.5">
+        {weekdays.map(([key, label]) => {
+          const id = `${idPrefix}-${key}`;
+          return (
+            <div key={key} className="flex items-center gap-1.5">
+              <Checkbox
+                id={id}
+                checked={range.days[key]?.enabled ?? false}
+                onCheckedChange={(checked) =>
+                  patchDay(key, { enabled: checked === true, time })
+                }
+              />
+              <Label htmlFor={id}>{label}</Label>
+            </div>
+          );
+        })}
+      </div>
+      <Select value={time} onValueChange={setTime}>
+        <SelectTrigger className="w-24 shrink-0" aria-label={timeAriaLabel}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {hours.map((hour) => (
+            <SelectItem key={hour} value={hour}>
+              {hour}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="flex shrink-0 items-center gap-2">
+        <Checkbox
+          id={untilId}
+          checked={until}
+          onCheckedChange={(checked) => setUntil(checked === true)}
+        />
+        <Label htmlFor={untilId}>עם תאריך סיום?</Label>
+        {until ? (
+          <div className="w-36">
+            <DatePicker
+              id={`${idPrefix}-until-date`}
+              value={range.to}
+              onChange={(to) => patch({ to })}
+            />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function ScheduleEditor() {
   const queryClient = useQueryClient();
   const schedule = useSchedule();
-  const ranges = useScheduleDraft();
-  const setRanges = useScheduleDraftApi();
-  const [alwaysSend, setAlwaysSend] = useState(false);
+  const [range, setRange] = useState<Range | null>(null);
+  const [fetchHours, setFetchHours] = useState<ScheduleData["fetch_every_hours"]>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    if (schedule.data) setAlwaysSend(schedule.data.always_send);
+    if (schedule.data) {
+      setRange(initialRange(schedule.data));
+      setFetchHours(schedule.data.fetch_every_hours ?? null);
+    }
   }, [schedule.data]);
   const save = useMutation({
-    mutationFn: () =>
-      write<{ schedule: Range[] }>("/api/v1/schedule", "POST", {
-        schedule: ranges,
-        always_send: alwaysSend,
-      }),
+    mutationFn: async () => {
+      if (!range) return;
+      await write("/api/v1/schedule", "POST", {
+        schedule: [toPayload(range)],
+        fetch_every_hours: fetchHours,
+        always_send: false,
+      });
+    },
     onSuccess: () => {
-      toast.success("מועדי השליחה נשמרו");
+      toast.success("לוח הזמנים נשמר");
       setError("");
       queryClient.invalidateQueries({ queryKey: ["schedule"] });
     },
     onError: () =>
-      setError(
-        "לא ניתן לשמור. יש לוודא שטווחי התאריכים אינם חופפים ושהתאריכים תקינים.",
-      ),
+      setError("לא ניתן לשמור. יש לבחור ימי שליחה וסיום תקינים."),
   });
-  function patchRange(index: number, change: Partial<Range>) {
-    setRanges((old) =>
-      old.map((range, current) =>
-        current === index ? { ...range, ...change } : range,
-      ),
-    );
-  }
-  function patchDay(index: number, key: string, change: Partial<Day>) {
-    setRanges((old) =>
-      old.map((range, current) => {
-        if (current !== index) return range;
-        const existing = range.days[key] ?? { enabled: false, time: "08:00" };
-        return {
-          ...range,
-          days: { ...range.days, [key]: { ...existing, ...change } },
-        };
-      }),
-    );
-  }
-  function setTime(index: number, time: string) {
-    setRanges((old) =>
-      old.map((range, current) =>
-        current === index
-          ? {
-              ...range,
-              days: Object.fromEntries(
-                weekdays.map(([key]) => [
-                  key,
-                  { enabled: range.days[key]?.enabled ?? false, time },
-                ]),
-              ),
-            }
-          : range,
-      ),
-    );
-  }
-  if (schedule.isPending) return <Loading />;
+  if (schedule.isPending || !range) return <Loading />;
   if (schedule.isError || !schedule.data) return <ErrorState />;
   return (
-    <div className="max-w-2xl space-y-4">
+    <div className="space-y-4">
       <section className="rounded-lg border bg-card p-6">
-        <div className="flex items-center gap-3">
-          <Checkbox
-            id="always-send"
-            checked={alwaysSend}
-            onCheckedChange={(checked) => setAlwaysSend(checked === true)}
-          />
-          <Label htmlFor="always-send" className="text-base font-medium">
-            שלח תמיד
-          </Label>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          שליחה אוטומטית שבועית (יום א׳ בשעה 09:00), בנוסף למועדים המותאמים.
-        </p>
+        <h2 className="mb-3 text-sm font-medium">רענון מהכנסת</h2>
+        <Select
+          value={fetchHours == null ? "off" : String(fetchHours)}
+          onValueChange={(value) =>
+            setFetchHours(value === "off" ? null : (Number(value) as 1 | 6 | 24))
+          }
+        >
+          <SelectTrigger className="w-40" aria-label="תדירות רענון">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FETCH_CADENCE.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </section>
-      {ranges.length === 0 ? (
-        <div className="rounded-lg border bg-card p-5 text-muted-foreground">
-          לא הוגדרו טווחי שליחה. הוסיפו טווח כדי להתחיל.
-        </div>
-      ) : (
-        ranges.map((range, index) => {
-          const time =
-            Object.values(range.days).find((day) => day.enabled)?.time ??
-            "08:00";
-          return (
-            <section
-              key={`${range.from}-${index}`}
-              className="rounded-lg border bg-card p-6"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">טווח {index + 1}</h2>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="מחיקת טווח"
-                  title="מחיקת טווח"
-                  onClick={() =>
-                    setRanges((old) => old.filter((_, i) => i !== index))
-                  }
-                >
-                  <Trash2 size={16} className="text-destructive" />
-                </Button>
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor={`from-${index}`}>מתאריך</Label>
-                  <DatePicker
-                    id={`from-${index}`}
-                    value={range.from}
-                    onChange={(from) => patchRange(index, { from })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`to-${index}`}>עד תאריך</Label>
-                  <DatePicker
-                    id={`to-${index}`}
-                    value={range.to}
-                    onChange={(to) => patchRange(index, { to })}
-                  />
-                </div>
-              </div>
-              <fieldset className="mt-6">
-                <legend className="text-sm font-medium">ימי שליחה</legend>
-                <div className="mt-2 flex flex-wrap gap-x-6">
-                  {weekdays.map(([key, label]) => (
-                    <div
-                      key={key}
-                      className="flex h-12 items-center gap-2 px-1 lg:h-10"
-                    >
-                      <Checkbox
-                        id={`${index}-${key}`}
-                        checked={range.days[key]?.enabled ?? false}
-                        onCheckedChange={(checked) =>
-                          patchDay(index, key, {
-                            enabled: checked === true,
-                            time,
-                          })
-                        }
-                      />
-                      <Label htmlFor={`${index}-${key}`}>{label}</Label>
-                    </div>
-                  ))}
-                </div>
-              </fieldset>
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor={`time-${index}`}>שעת שליחה</Label>
-                  <Select
-                    value={time}
-                    onValueChange={(value) => setTime(index, value)}
-                  >
-                    <SelectTrigger id={`time-${index}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {hours.map((hour) => (
-                        <SelectItem key={hour} value={hour}>
-                          {hour}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </section>
-          );
-        })
-      )}
-      <AddRangeButton />
+      <section className="rounded-lg border bg-card p-6">
+        <h2 className="mb-3 text-sm font-medium">שליחה</h2>
+        <RangeFields
+          range={range}
+          setRange={(update) => setRange((old) => (old ? update(old) : old))}
+          idPrefix="send"
+          timeAriaLabel="שעת שליחה"
+        />
+      </section>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <div className="pt-4">
         <Button disabled={save.isPending} onClick={() => save.mutate()}>

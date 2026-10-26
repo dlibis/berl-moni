@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { PageHeader } from "../components/page-header";
 import { ReportAppendix } from "../features/letter-report/report-appendix";
 import { ReportMoneyFlow } from "../features/letter-report/report-money-flow";
@@ -14,6 +14,12 @@ export function Letter() {
   const letter = useLetter(slug).data;
   return (
     <>
+      <Link
+        to="/"
+        className="mb-2 inline-block text-sm text-muted-foreground underline-offset-4 hover:underline"
+      >
+        חזרה לראשי
+      </Link>
       <PageHeader title={letter?.request_numbers.join(", ") || "פנייה"}>
         {letter ? <LetterActions letter={letter} /> : null}
       </PageHeader>

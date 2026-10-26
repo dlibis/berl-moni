@@ -1,17 +1,30 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { MoreVertical, Send } from "lucide-react";
 import { ApiError } from "../../services/api";
 import { Button } from "../../components/ui/button";
 import { AlertDialog } from "../../components/ui/alert-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../components/ui/popover";
+import { ConfirmDialog } from "../../components/confirm-dialog";
 import { useAnalyzeLetter } from "../../hooks/use-analyze-letter";
 import { usePatchLetter } from "../../hooks/use-patch-letter";
 import { useSendLetter } from "../../hooks/use-send-letter";
-import { ReanalyzeMenu } from "./reanalyze-menu";
 import { SendConfirmDialog } from "./send-confirm-dialog";
 import type { LetterItem } from "./types";
 
-export function LetterActions({ letter }: { letter: LetterItem }) {
+export function LetterActions({
+  letter,
+  compact = false,
+}: {
+  letter: LetterItem;
+  compact?: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmSend, setConfirmSend] = useState(false);
+  const [confirmReanalyze, setConfirmReanalyze] = useState(false);
   const analyze = useAnalyzeLetter();
   const patch = usePatchLetter();
   const send = useSendLetter();
@@ -21,9 +34,12 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
     ["discovered", "failed"].includes(status) ||
     (analyzed && letter.needs_analysis);
   const canReanalyze = analyzed || letter.legacy;
-  const hasReport = analyzed && !letter.legacy;
   const canSend =
     analyzed && letter.relevant && letter.complete && !letter.legacy;
+  const analyzeReady = canAnalyze || canReanalyze;
+  const analyzeBlocker = analyzeReady
+    ? undefined
+    : "הניתוח כבר בתהליך";
   const sendBlocker = !analyzed
     ? "יש לנתח את הפנייה לפני שליחה"
     : letter.legacy
@@ -46,13 +62,124 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
         },
       },
     );
+  const closeMenu = () => setMenuOpen(false);
+  const overflow = (
+    <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={compact ? "h-8 w-8 p-0" : undefined}
+          aria-label="פעולות נוספות"
+        >
+          <MoreVertical />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-auto p-1">
+        {compact ? (
+          <>
+            <span title={analyzeBlocker} className="block">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                disabled={analyze.isPending || !analyzeReady}
+                onClick={() => {
+                  closeMenu();
+                  if (canAnalyze) analyze.mutate({ slug });
+                  else setConfirmReanalyze(true);
+                }}
+              >
+                ניתוח
+              </Button>
+            </span>
+            <span title={canSend ? undefined : sendBlocker} className="block">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                disabled={!canSend || send.isPending}
+                onClick={() => {
+                  closeMenu();
+                  letter.send_count > 0 ? setConfirmSend(true) : sendNow();
+                }}
+              >
+                שליחה
+              </Button>
+            </span>
+          </>
+        ) : null}
+        {!compact && canReanalyze ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start"
+            onClick={() => {
+              closeMenu();
+              setConfirmReanalyze(true);
+            }}
+          >
+            ניתוח מחדש
+          </Button>
+        ) : null}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          disabled={patch.isPending}
+          onClick={() => {
+            closeMenu();
+            patch.mutate({
+              slug,
+              requires_review: !letter.requires_review,
+            });
+          }}
+        >
+          {letter.requires_review ? "בטל דורש עיון" : "דורש עיון"}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          disabled={patch.isPending}
+          onClick={() => {
+            closeMenu();
+            patch.mutate({ slug, passed: !letter.passed });
+          }}
+        >
+          {letter.passed ? "לא עברה" : "סמן כעברה"}
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+  const dialogs = (
+    <>
+      <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
+        <SendConfirmDialog
+          pending={send.isPending}
+          onConfirm={() => sendNow(true)}
+        />
+      </AlertDialog>
+      <AlertDialog open={confirmReanalyze} onOpenChange={setConfirmReanalyze}>
+        <ConfirmDialog
+          title="לנתח מחדש?"
+          description="ניתוח מחדש יעלה קריאה נוספת למודל"
+          action="ניתוח מחדש"
+          pending={analyze.isPending}
+          onConfirm={() => analyze.mutate({ slug, reanalyze: true })}
+        />
+      </AlertDialog>
+    </>
+  );
+  if (compact)
+    return (
+      <div className="flex justify-end">
+        {overflow}
+        {dialogs}
+      </div>
+    );
   return (
     <div className="flex flex-wrap justify-end gap-1">
-      {hasReport ? (
-        <Button asChild variant="outline" size="sm">
-          <Link to={`/letters/${slug}`}>צפייה</Link>
-        </Button>
-      ) : null}
       {canAnalyze ? (
         <Button
           variant="outline"
@@ -63,42 +190,21 @@ export function LetterActions({ letter }: { letter: LetterItem }) {
           ניתוח
         </Button>
       ) : null}
-      <span title={canSend ? undefined : sendBlocker}>
+      <span title={canSend ? undefined : sendBlocker} className="inline-flex">
         <Button
           size="sm"
+          className="size-8 p-0 leading-none"
+          aria-label="שליחה"
           disabled={!canSend || send.isPending}
           onClick={() =>
             letter.send_count > 0 ? setConfirmSend(true) : sendNow()
           }
         >
-          שליחה
+          <Send className="text-white" />
         </Button>
       </span>
-      <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
-        <SendConfirmDialog
-          pending={send.isPending}
-          onConfirm={() => sendNow(true)}
-        />
-      </AlertDialog>
-      {canReanalyze ? <ReanalyzeMenu slug={slug} /> : null}
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={patch.isPending}
-        onClick={() =>
-          patch.mutate({ slug, requires_review: !letter.requires_review })
-        }
-      >
-        {letter.requires_review ? "בטל דורש עיון" : "דורש עיון"}
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={patch.isPending}
-        onClick={() => patch.mutate({ slug, passed: !letter.passed })}
-      >
-        {letter.passed ? "לא עברה" : "עברה"}
-      </Button>
+      {overflow}
+      {dialogs}
     </div>
   );
 }

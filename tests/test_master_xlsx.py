@@ -2,7 +2,7 @@ from io import BytesIO
 
 import pytest
 from flask import Flask
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from tests.test_letters_api import SessionResponse
 from web.csrf import register_csrf
@@ -26,6 +26,12 @@ def test_round_trip_and_normalize():
     data = _sample_xlsx([("42", "foo"), ("200102", "bar")])
     programs = xlsx_to_programs(data)
     assert programs == [("000042", "foo"), ("200102", "bar")]
+    numeric = _sample_xlsx([])
+    wb = load_workbook(BytesIO(numeric))
+    wb.active.append([200102.0, "from-excel"])
+    buf = BytesIO()
+    wb.save(buf)
+    assert xlsx_to_programs(buf.getvalue()) == [("200102", "from-excel")]
     out = programs_to_xlsx([{"code": c, "name": n} for c, n in programs])
     assert xlsx_to_programs(out) == programs
 

@@ -4,6 +4,7 @@ refresh_feed and request_analysis run in the web; drain_queue runs in the worker
 `letters.analysis_status` column with leases (LettersRepository.claim); each letter commits on its own.
 """
 import logging
+from datetime import datetime, timezone
 from typing import Callable, Literal, NamedTuple
 
 from bot.domain.errors import ExtractionError
@@ -30,6 +31,7 @@ def refresh_feed(uow, feed: Callable[[], list[FeedLetter]], auto: bool = False) 
     """Upsert the feed's letters; new ones are `queued` when auto, else `discovered`. FeedUnreachable propagates."""
     letters = feed()
     new = uow.letters.upsert_feed(letters, auto)
+    uow.set_setting("last_feed_refresh_at", datetime.now(timezone.utc).isoformat())
     uow.commit()
     return RefreshResult(new, len(letters) - new)
 

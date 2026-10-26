@@ -5,6 +5,7 @@ from io import BytesIO
 from zipfile import BadZipFile
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
 SHEET = "תוכניות"
 CODE_COL = "קוד"
@@ -13,9 +14,16 @@ CODE_RE = re.compile(r"^[0-9]{1,6}$")
 
 
 def _norm_code(value) -> str | None:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
-    text = str(value).strip()
+    if isinstance(value, int):
+        text = str(value)
+    elif isinstance(value, float):
+        if not value.is_integer():
+            return None
+        text = str(int(value))
+    else:
+        text = str(value).strip()
     if not CODE_RE.fullmatch(text):
         return None
     return text.zfill(6)
@@ -36,7 +44,7 @@ def programs_to_xlsx(programs: list[dict]) -> bytes:
 def xlsx_to_programs(data: bytes) -> list[tuple[str, str]]:
     try:
         wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
-    except (BadZipFile, KeyError, OSError, ValueError):
+    except (BadZipFile, InvalidFileException, KeyError, OSError, ValueError):
         raise ValueError("invalid xlsx") from None
     if SHEET not in wb.sheetnames:
         raise ValueError("missing sheet")

@@ -56,7 +56,7 @@ class UnitOfWork:
 
     def due_day(self, now_utc):
         """Today's Israel date if custom schedule or Always Send says a send is due now."""
-        day = due_day(now_utc, self.setting("schedule", []), self.conn)
-        if day is not None:
-            return day
-        return due_always_send(now_utc, bool(self.setting("always_send", False)), self.conn)
+        always = bool(self.setting("always_send", False))
+        return due_day(now_utc, self.setting("schedule", []), self.conn, always) or due_always_send(
+            now_utc, always, self.conn
+        )

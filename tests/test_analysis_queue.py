@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -113,6 +113,13 @@ def test_refresh_inserts_new_and_updates_seen(uow, feed):
 def test_refresh_with_auto_queues_new_letters(uow, feed):
     refresh_feed(uow, feed, auto=True)
     assert uow.letters.get(slug_for("u1"))["analysis_status"] == "queued"
+
+
+def test_refresh_stamps_last_feed_refresh_at(uow, feed):
+    before = datetime.now(timezone.utc)
+    refresh_feed(uow, feed)
+    stamp = datetime.fromisoformat(uow.setting("last_feed_refresh_at"))
+    assert before - timedelta(seconds=1) <= stamp <= datetime.now(timezone.utc)
 
 
 def test_request_queues_and_dispatches_once(uow, discovered):

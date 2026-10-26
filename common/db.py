@@ -42,9 +42,11 @@ def add_subscriber(conn, email: str, name: str) -> None:
     conn.execute("INSERT INTO mailing_list (email, name) VALUES (%s, %s)", (email, name))
 
 
-def add_email(conn, email: str) -> None:
-    """Insert one address (caller trims/lowercases and checks the cap). Raises UniqueViolation on duplicates."""
-    conn.execute("INSERT INTO mailing_list (email, name) VALUES (%s, %s)", (email, ""))
+def update_subscriber_name(conn, email: str, name: str) -> bool:
+    """True if the address was on the list."""
+    return conn.execute(
+        "UPDATE mailing_list SET name = %s WHERE email = %s", (name, email)
+    ).rowcount > 0
 
 
 def remove_email(conn, email: str) -> bool:

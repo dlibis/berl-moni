@@ -9,7 +9,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from bot.domain.errors import DownloadError
+from bot.domain.errors import DownloadError, ExtractionError
+
+
+def _is_pdf(data: bytes) -> bool:
+    return data.startswith(b"%PDF-")
 
 
 
@@ -21,6 +25,8 @@ def local_copy(source: str) -> str:
     cache_dir = Path(tempfile.gettempdir()) / "moni_letter_pdfs"
     cache_dir.mkdir(exist_ok=True)
     cache_file = cache_dir / (hashlib.sha256(source.encode()).hexdigest() + ".pdf")
+    if cache_file.exists() and not _is_pdf(cache_file.read_bytes()):
+        cache_file.unlink()
     if not cache_file.exists():
         cache_file.write_bytes(_download(source))
     return str(cache_file)
@@ -37,7 +43,10 @@ def _download(url: str, attempts: int = 4) -> bytes:
     for attempt in range(attempts):
         try:
             with urllib.request.urlopen(url, timeout=30) as response:
-                return response.read()
+                data = response.read()
+                if not _is_pdf(data):
+                    raise ExtractionError(f"Source did not return a PDF: {url}")
+                return data
         except (urllib.error.URLError, TimeoutError) as error:
             last_error = error
             if attempt < attempts - 1:

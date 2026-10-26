@@ -12,6 +12,8 @@ ALWAYS_SEND_WEEKDAY = 6  # Sunday (date.weekday())
 ALWAYS_SEND_TIME = time(9, 0)
 
 
+# Spec left Always Send vs custom-range overlap unspecified. This shares
+# send_runs_one_auto_per_day with due_day: at most one auto send per Israel day.
 def due_always_send(now_utc: datetime, enabled: bool, conn) -> date | None:
     if not enabled:
         return None

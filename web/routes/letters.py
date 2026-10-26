@@ -3,7 +3,7 @@ from flask import Blueprint, g, jsonify, request
 from bot.domain.errors import FeedUnreachable
 from bot.service_layer.analysis import refresh_feed, request_analysis
 from bot.service_layer.sending import send_letter
-from common.schedule_due import schedule_configured
+from common.schedule_due import FETCH_HOURS, schedule_configured
 from common.db import connect, load_programs
 from web import bootstrap
 from web.auth import require_session
@@ -59,7 +59,8 @@ def patch_letter(slug):
 def refresh():
     with bootstrap.uow() as uow:
         try:
-            auto = schedule_configured(uow.setting("schedule", []))  # auto_since outlives an ended range
+            auto = (schedule_configured(uow.setting("schedule", []))
+                    or uow.setting("fetch_every_hours") in FETCH_HOURS)
             result = refresh_feed(uow, bootstrap.ports().feed, auto=auto)
         except FeedUnreachable:
             return jsonify({"error": "feed_unreachable"}), 502

@@ -28,7 +28,7 @@ from bot.domain.feed import FeedLetter
 from bot.domain.slug import letter_slug
 from bot.domain.statuses import LetterReason, ScanReason, ScanStatus
 from common.limits import list_cap
-from common.schedule_due import ISRAEL
+from common.schedule_due import ISRAEL, fetch_due
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +223,20 @@ def resume_run(uow, ports: Ports, run: dict, today) -> int:
     return deliver(uow, ports, run, today, ScanCounts(new_letters=0, relevant=0, failed=0))
 
 
+def fetch_if_due(uow, ports: Ports, now: datetime) -> int:
+    """Pull and analyze the feed when the fetch schedule is due; never send mail."""
+    last = uow.setting("last_feed_refresh_at")
+    if not fetch_due(now, uow.setting("fetch_every_hours"), last):
+        return 0
+    from bot.service_layer.analysis import drain_queue, refresh_feed
+    try:
+        refresh_feed(uow, ports.feed, auto=True)
+    except FeedUnreachable as error:
+        logger.error("feed unreachable: %s", error)
+        return 1
+    return 1 if drain_queue(uow, ports.extractor, ports.model).unexpected else 0
+
+
 def send_job(uow, ports: Ports) -> int:
     now = ports.now()
     run = uow.send_runs.find_open()
@@ -233,7 +247,7 @@ def send_job(uow, ports: Ports) -> int:
         return resume_run(uow, ports, run, now.astimezone(ISRAEL).date())
     day = uow.due_day(now)
     if day is None:
-        return 0
+        return fetch_if_due(uow, ports, now)
 
     from_address = uow.setting("from_address", "")
     reply_to = uow.setting("reply_to_address", "")

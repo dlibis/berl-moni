@@ -8,7 +8,7 @@ const navigation = [
   ["/", "ראשי", House],
   ["/programs", "תוכניות", List],
   ["/mailing-list", "רשימת תפוצה", Mail],
-  ["/schedule", "מועדי שליחה", CalendarDays],
+  ["/schedule", "לוח זמנים", CalendarDays],
   ["/mailbox", "כתובות שליחה", AtSign],
 ] as const;
 export function Nav({ close }: { close?: () => void }) {

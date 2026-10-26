@@ -8,7 +8,7 @@ from psycopg.types.json import Jsonb
 
 from bot.adapters.github.dispatch import dispatch_workflow
 from bot.domain.versions import analysis_version
-from bot.tests.fixtures.extractions import complete_extraction
+from bot.tests.fixtures.extractions import complete_extraction, complete_irrelevant_extraction
 from web.auth import require_session
 from bot.domain.errors import FeedUnreachable
 from bot.service_layer.services import Ports
@@ -30,6 +30,7 @@ def db(test_db_url):
     connection = lambda: psycopg.connect(test_db_url, row_factory=dict_row)
     with connection() as conn:
         conn.execute("TRUNCATE letters, programs RESTART IDENTITY CASCADE")
+        conn.execute("DELETE FROM settings WHERE key IN ('schedule', 'fetch_every_hours', 'auto_since')")
         conn.execute("INSERT INTO programs (code, name) VALUES ('200102', 'b')")
     return connection
 
@@ -129,6 +130,17 @@ def test_derived_flags_and_filters(client, db):
         assert client.get(f"/api/v1/letters?status={bad}").status_code == 400
 
 
+def test_complete_not_relevant_is_false_and_in_irrelevant_filter(client, db):
+    slug = insert(db, 200, complete_irrelevant_extraction(), analysis_version("m"), "analyzed")
+    insert(db, 201, status="failed")
+    items = {i["slug"]: i for i in client.get("/api/v1/letters").get_json()["items"]}
+    assert items[slug]["relevant"] is False
+    assert items[slug]["complete"] is True
+    irrelevant = {i["slug"] for i in client.get("/api/v1/letters?status=irrelevant").get_json()["items"]}
+    assert slug in irrelevant
+    assert "s201" not in irrelevant
+
+
 def test_manual_flags_and_requires_review_filter(client, db, monkeypatch):
     slug = insert(db, 50)
     assert client.get(f"/api/v1/letters/{slug}").get_json()["passed"] is False
@@ -225,6 +237,21 @@ def test_refresh_after_the_schedule_ended_does_not_queue_paid_analysis(client, m
     with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
         row = conn.execute("SELECT analysis_status FROM letters WHERE letter_url = 'https://example.test/g.pdf'").fetchone()
     assert row["analysis_status"] == "discovered"
+
+
+def test_refresh_queues_when_only_fetch_cadence_is_on(client, monkeypatch, test_db_url):
+    from bot.domain.feed import FeedLetter
+    from common.db import set_setting
+    with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
+        set_setting(conn, "schedule", [])
+        set_setting(conn, "fetch_every_hours", 1)
+    monkeypatch.setattr("web.bootstrap.ports", lambda: Ports(
+        feed=lambda: [FeedLetter("https://example.test/h.pdf", date(2026, 1, 1), "m", ("1",), ())],
+        extractor=None, render=None, send_email=None, save_copy=None))
+    client.post("/api/v1/letters/refresh", json={}, headers=ORIGIN)
+    with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
+        row = conn.execute("SELECT analysis_status FROM letters WHERE letter_url = 'https://example.test/h.pdf'").fetchone()
+    assert row["analysis_status"] == "queued"
 
 
 def test_refresh_feed_down_is_502(client, monkeypatch):

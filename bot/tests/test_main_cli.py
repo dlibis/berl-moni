@@ -83,6 +83,7 @@ def db(test_db_url, stubs, monkeypatch, tmp_path):
     with connect(test_db_url) as conn:
         conn.execute("TRUNCATE letters, scans, email_log, send_runs, mailing_list, programs RESTART IDENTITY CASCADE")
         conn.execute("INSERT INTO programs (code, name) VALUES (%s, 'p')", (PROGRAM,))
+        conn.execute("DELETE FROM settings WHERE key IN ('fetch_every_hours', 'last_feed_refresh_at')")
         for key, value in dict(schedule=EVERY_DAY, from_address=FROM, reply_to_address=REPLY, resend_daily_limit=100,
                                resend_monthly_limit=3000, resend_reserve=5,
                                auto_since="2000-01-01T00:00:00+00:00").items():
@@ -128,6 +129,18 @@ def test_not_due_writes_no_scan(db, stubs):
         set_setting(conn, "schedule", [])
     assert run(stubs) == 0
     assert rows(db, "SELECT * FROM scans") == [] and stubs.scanned == []
+
+
+def test_fetch_only_analyzes_without_sending(db, stubs):
+    with connect(db) as conn:
+        set_setting(conn, "schedule", [])
+        set_setting(conn, "fetch_every_hours", 1)
+        conn.execute("DELETE FROM settings WHERE key = 'last_feed_refresh_at'")
+    stubs.urls = [A]
+    assert run(stubs) == 0
+    [row] = rows(db, "SELECT * FROM letters")
+    assert (row["letter_url"], row["analysis_status"], row["send_count"]) == (A, "analyzed", 0)
+    assert stubs.sent == [] and rows(db, "SELECT * FROM scans") == [] and rows(db, "SELECT * FROM send_runs") == []
 
 
 def test_one_relevant_letter_is_sent_once(db, stubs):

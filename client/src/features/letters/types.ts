@@ -27,6 +27,7 @@ export type LetterItem = {
   legacy: boolean;
   last_error: string | null;
   last_error_at: string | null;
+  report_available: boolean;
   last_sent_at: string | null;
   send_count: number;
 };

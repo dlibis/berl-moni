@@ -68,6 +68,8 @@ def test_export_xlsx_rows_and_hyperlink(client, db):
     wb = load_workbook(BytesIO(response.data))
     ws = wb.active
     assert ws.max_row == count + 1
-    link_cell = ws.cell(row=2, column=10)
+    headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    assert "דורש עיון" in headers and "עברה" in headers
+    link_cell = ws.cell(row=2, column=len(headers))
     assert link_cell.hyperlink is not None
     assert link_cell.hyperlink.target.endswith(".pdf")

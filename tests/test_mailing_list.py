@@ -28,6 +28,28 @@ def test_post_without_name_is_400(client):
     assert client.post("/api/v1/mailing_list", json={"email": "a@example.com"}, headers=headers).status_code == 400
 
 
+def test_post_then_patch_name(client, test_db_url):
+    headers = {"Origin": "https://berl.site"}
+    with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
+        conn.execute("DELETE FROM mailing_list")
+    assert client.post(
+        "/api/v1/mailing_list",
+        json={"email": "a@example.com", "name": "Ada"},
+        headers=headers,
+    ).status_code == 201
+    r = client.patch(
+        "/api/v1/mailing_list",
+        json={"email": "a@example.com", "name": "Ada Lovelace"},
+        headers=headers,
+    )
+    assert r.status_code == 200 and r.get_json()["name"] == "Ada Lovelace"
+    assert client.patch(
+        "/api/v1/mailing_list",
+        json={"email": "a@example.com", "name": "  "},
+        headers=headers,
+    ).status_code == 400
+
+
 def test_get_returns_names(client, test_db_url):
     with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
         conn.execute("DELETE FROM mailing_list")

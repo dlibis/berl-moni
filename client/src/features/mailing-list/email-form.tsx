@@ -24,6 +24,10 @@ export function EmailForm({
       const next = email.trim().toLowerCase();
       const nextName = name.trim();
       if (initialEmail === next && initialName === nextName) return;
+      if (initialEmail === next) {
+        await write("/api/v1/mailing_list", "PATCH", { email: next, name: nextName });
+        return;
+      }
       await write("/api/v1/mailing_list", "POST", { email: next, name: nextName });
       if (initialEmail)
         await write("/api/v1/mailing_list", "DELETE", { email: initialEmail });

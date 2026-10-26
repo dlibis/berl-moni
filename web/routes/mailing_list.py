@@ -3,7 +3,7 @@ import re
 from flask import Blueprint, jsonify, request
 from psycopg.errors import UniqueViolation
 
-from common.db import add_subscriber, connect, get_setting, list_subscribers, remove_email
+from common.db import add_subscriber, connect, get_setting, list_subscribers, remove_email, update_subscriber_name
 from common.limits import list_cap
 from web.auth import require_session
 
@@ -54,6 +54,21 @@ def add_mailing_list_email():
     except UniqueViolation:
         return jsonify({"error": "email exists"}), 400
     return jsonify({"email": email, "name": name}), 201
+
+
+@mailing_list_bp.patch("")
+@require_session
+def patch_mailing_list_email():
+    body = request.get_json(silent=True) or {}
+    email = _email(body.get("email"))
+    name = _name(body.get("name"))
+    if email is None:
+        return jsonify({"error": "invalid email"}), 400
+    if name is None:
+        return jsonify({"error": "invalid name"}), 400
+    with connect() as conn:
+        changed = update_subscriber_name(conn, email, name)
+    return (jsonify({"email": email, "name": name}), 200) if changed else (jsonify({"error": "not found"}), 404)
 
 
 @mailing_list_bp.delete("")

@@ -8,7 +8,12 @@ from bot.adapters.postgres.scans import ScansRepository
 from bot.adapters.postgres.send_runs import SendRunsRepository
 from bot.domain.extraction import Extraction
 from bot.domain.feed import FeedLetter
-from bot.tests.fixtures.extractions import coalition_bypass_extraction, complete_extraction, irrelevant_extraction
+from bot.tests.fixtures.extractions import (
+    coalition_bypass_extraction,
+    complete_extraction,
+    complete_irrelevant_extraction,
+    irrelevant_extraction,
+)
 from common.db import connect
 
 DAY = datetime.date(2026, 10, 18)
@@ -55,6 +60,7 @@ def test_auto_eligible_is_analyzed_complete_relevant_unsent_and_recent(conn):
 def test_auto_eligible_coalition_bypass_without_master_overlap(conn):
     conn.execute("TRUNCATE programs")
     analyzed(conn, "https://x/coalition.pdf", coalition_bypass_extraction())
+    analyzed(conn, "https://x/complete-irrelevant.pdf", complete_irrelevant_extraction())
     assert LettersRepository(conn).auto_eligible(None) == ["https://x/coalition.pdf"]
 
 

@@ -25,7 +25,7 @@ jobs:
       due: ${{ steps.due.outputs.due }}
       queued: ${{ steps.due.outputs.queued }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - run: uv sync --only-group check --no-install-project
       - id: due
@@ -38,7 +38,7 @@ jobs:
     if: needs.check.outputs.due == 'true' || needs.check.outputs.queued == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
       - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-heb
       - run: uv sync --group bot

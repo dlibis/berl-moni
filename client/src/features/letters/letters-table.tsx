@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import { useLetters } from "../../hooks/use-letters";
+import { LETTERS_PAGE_SIZE, useLetters } from "../../hooks/use-letters";
 import { LetterCard } from "./letter-card";
 import { LetterRow } from "./letter-row";
 import type { LetterStatusFilter } from "./types";
@@ -32,12 +32,18 @@ export function LettersTable({ status }: { status?: LetterStatusFilter }) {
             <Table className="table-fixed">
               <TableHeader className="bg-muted">
                 <TableRow>
+                  <TableHead className="w-8">
+                    <span className="sr-only">דורש עיון</span>
+                  </TableHead>
                   <TableHead className="w-[7.5rem] text-start">תאריך</TableHead>
-                  <TableHead className="w-[18%] text-start">מספרי בקשה</TableHead>
+                  <TableHead className="w-[18%] text-start">
+                    מספרי בקשה
+                  </TableHead>
                   <TableHead className="text-start">משרד</TableHead>
-                  <TableHead className="w-28 text-start">סטטוס</TableHead>
-                  <TableHead className="w-28 text-start">נשלח לאחרונה</TableHead>
-                  <TableHead className="w-56">
+                  <TableHead className="w-28 text-start">רלוונטי</TableHead>
+                  <TableHead className="w-24 text-start">עברה</TableHead>
+                  <TableHead className="w-16 px-1 text-center">דוח</TableHead>
+                  <TableHead className="w-12 px-1">
                     <span className="sr-only">פעולות</span>
                   </TableHead>
                 </TableRow>
@@ -54,7 +60,12 @@ export function LettersTable({ status }: { status?: LetterStatusFilter }) {
               <LetterCard key={letter.slug} letter={letter} />
             ))}
           </div>
-          <Pagination page={page} count={total} setPage={setPage} />
+          <Pagination
+            page={page}
+            count={total}
+            pageSize={LETTERS_PAGE_SIZE}
+            setPage={setPage}
+          />
         </>
       )}
     </>

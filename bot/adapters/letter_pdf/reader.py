@@ -26,8 +26,9 @@ from dataclasses import dataclass
 import pandas as pd
 import pdfplumber
 import pymupdf4llm
+from pdfplumber.utils.exceptions import PdfminerException
 
-from bot.domain.errors import NoTextError
+from bot.domain.errors import ExtractionError, NoTextError
 
 
 # One number, as pdfplumber gives it (digits, commas, a dot, a minus on either side).
@@ -59,7 +60,10 @@ class PdfDocument:
         self._scanned: bool | None = None
 
     def _open(self):
-        return pdfplumber.open(self.path)
+        try:
+            return pdfplumber.open(self.path)
+        except PdfminerException as error:
+            raise ExtractionError(f"Could not parse PDF: {self.path}") from error
 
     def _is_header_page(self, page) -> bool:
         """True if the page contains HEADER (i.e. a budget-table page).

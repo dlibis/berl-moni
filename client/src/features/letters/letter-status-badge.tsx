@@ -1,47 +1,111 @@
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { CircleAlert, CircleX, Eye, LoaderCircle } from "lucide-react";
+import { Button } from "../../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
+import { lastErrorLabel } from "./last-error";
 import type { LetterItem } from "./types";
 
 const base = "rounded-full px-2 py-0.5 text-xs";
+const onCls =
+  "bg-green-500/15 font-bold text-green-800 dark:text-green-300";
+const offCls = "bg-muted text-muted-foreground";
 
-function label({
-  analysis_status,
-  legacy,
-  needs_analysis,
-  relevant,
-}: LetterItem) {
-  if (analysis_status === "failed") return "תקלה";
-  if (["discovered", "queued", "analyzing"].includes(analysis_status))
-    return "לא נותח";
-  if (legacy) return "יש לנתח מחדש";
-  if (needs_analysis) return "דורשים ניתוח";
-  return relevant ? "רלוונטי" : "לא רלוונטי";
+function FlagBadge({ on, yes, no }: { on: boolean; yes: string; no: string }) {
+  return (
+    <span className={`${base} ${on ? onCls : offCls}`}>{on ? yes : no}</span>
+  );
 }
 
-export function LetterStatusBadge({ letter }: { letter: LetterItem }) {
-  const failed = letter.analysis_status === "failed";
+function HintIcon({
+  label,
+  className = "text-red-500",
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      <span
-        className={`${base} ${failed ? "bg-destructive/10 text-destructive" : "bg-muted"}`}
-        title={failed ? (letter.last_error ?? undefined) : undefined}
-      >
-        {label(letter)}
-      </span>
-      {letter.requires_review ? (
-        <span className={`${base} bg-amber-500/15 text-amber-800`}>
-          דורש עיון
-        </span>
-      ) : null}
-      <span className={`${base} ${letter.passed ? "bg-green-500/15 text-green-800" : "bg-muted text-muted-foreground"}`}>
-        {letter.passed ? "עברה" : "לא עברה"}
-      </span>
-      {!failed && letter.last_error ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
         <span
-          className={`${base} bg-destructive/10 text-destructive`}
-          title={letter.last_error}
+          className={`inline-flex ${className}`}
+          tabIndex={0}
+          aria-label={label}
         >
-          הניתוח האחרון נכשל
+          {children}
         </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function LetterRelevantBadge({ letter }: { letter: LetterItem }) {
+  if (letter.analysis_status !== "analyzed") return null;
+  return <FlagBadge on={letter.relevant} yes="רלוונטי" no="לא רלוונטי" />;
+}
+
+export function LetterAnalysisIcon({ letter }: { letter: LetterItem }) {
+  if (letter.analysis_status === "failed") {
+    return (
+      <HintIcon label={lastErrorLabel(letter.last_error) ?? "תקלה"}>
+        <CircleX size={16} aria-hidden />
+      </HintIcon>
+    );
+  }
+  if (letter.analysis_status !== "analyzed") {
+    const analyzing = letter.analysis_status === "analyzing";
+    return (
+      <HintIcon
+        label={analyzing ? "הניתוח מתבצע" : "ממתין לניתוח"}
+        className="text-muted-foreground"
+      >
+        <LoaderCircle
+          size={16}
+          className={analyzing ? "animate-spin" : undefined}
+          aria-hidden
+        />
+      </HintIcon>
+    );
+  }
+  if (!letter.last_error) return null;
+  return (
+    <HintIcon label={lastErrorLabel(letter.last_error) ?? "תקלה"}>
+      <CircleX size={16} aria-hidden />
+    </HintIcon>
+  );
+}
+
+export function LetterReportCell({ letter }: { letter: LetterItem }) {
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <LetterAnalysisIcon letter={letter} />
+      {letter.report_available || letter.analysis_status === "analyzed" ? (
+        <Button asChild variant="ghost" size="sm" className="h-8 w-8 p-0">
+          <Link to={`/letters/${letter.slug}`} aria-label="צפייה בדוח">
+            <Eye aria-hidden />
+          </Link>
+        </Button>
       ) : null}
     </div>
   );
+}
+
+export function RequiresReviewIcon({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <HintIcon label="דורש עיון">
+      <CircleAlert size={16} aria-hidden />
+    </HintIcon>
+  );
+}
+
+export function LetterPassedBadge({ passed }: { passed: boolean }) {
+  return <FlagBadge on={passed} yes="עברה" no="לא עברה" />;
 }

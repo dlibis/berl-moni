@@ -26,7 +26,7 @@ FILTERS = {
     "requires_review": "requires_review IS TRUE",
     "needs_analysis": f"{RELEVANT} AND NOT {COMPLETE}",
     "relevant": RELEVANT,
-    "irrelevant": f"extraction IS NOT NULL AND NOT {RELEVANT}",
+    "irrelevant": f"{COMPLETE} AND NOT {RELEVANT}",
 }
 
 ORDER = "ORDER BY letter_date DESC NULLS LAST, letter_url"
@@ -98,4 +98,5 @@ def _item(row: dict) -> dict:
     version, has_extraction = row.pop("extraction_version"), row.pop("has_extraction")
     row["needs_analysis"] = row["relevant"] and not row["complete"]
     row["outdated"] = has_extraction and is_outdated(version)
+    row["report_available"] = has_extraction
     return {key: value.isoformat() if hasattr(value, "isoformat") else value for key, value in row.items()}

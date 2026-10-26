@@ -1,8 +1,11 @@
 """The from/to amounts of the budget tables: blank halves, negative amounts, and the arithmetic check."""
 import pandas as pd
+import pytest
+from reportlab.pdfgen import canvas
 
 from bot.adapters.letter_pdf.parser import BudgetLetter
 from bot.adapters.letter_pdf.reader import PdfDocument
+from bot.domain.errors import ExtractionError
 
 
 def split(cells: dict) -> dict:
@@ -32,3 +35,29 @@ def test_the_arithmetic_check_passes_a_balanced_row_and_catches_an_unbalanced_on
     assert unbalanced("90,000", -90000, 0) == []
     assert unbalanced("90,000", -90000, 10) == ["470102"]
     assert unbalanced("90,000-", 100000, 10000) == []  # a negative change, as cleaned
+
+
+def test_malformed_pdf_is_a_handled_extraction_error(tmp_path):
+    path = tmp_path / "malformed.pdf"
+    path.write_bytes(b"%PDF-1.7\nnot a PDF")
+
+    with pytest.raises(ExtractionError, match="Could not parse PDF"):
+        PdfDocument(str(path)).text
+
+
+def test_valid_minimal_pdf_is_parsed(tmp_path):
+    path = tmp_path / "valid.pdf"
+    pdf = canvas.Canvas(str(path))
+    pdf.drawString(72, 720, "minimal PDF")
+    pdf.save()
+
+    assert "minimal PDF" in PdfDocument(str(path)).raw_text
+
+
+def test_unexpected_reader_error_is_not_hidden(tmp_path, monkeypatch):
+    path = tmp_path / "valid.pdf"
+    path.write_bytes(b"%PDF-1.7\n")
+    monkeypatch.setattr("bot.adapters.letter_pdf.reader.pdfplumber.open", lambda path: (_ for _ in ()).throw(RuntimeError("bug")))
+
+    with pytest.raises(RuntimeError, match="bug"):
+        PdfDocument(str(path)).text

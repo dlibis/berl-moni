@@ -5,6 +5,8 @@ import type {
 } from "../features/letters/types";
 import { get } from "../services/api";
 
+export const LETTERS_PAGE_SIZE = 10;
+
 export function useLetters({
   page,
   status,
@@ -16,7 +18,7 @@ export function useLetters({
     queryKey: ["letters", page, status],
     queryFn: () =>
       get<LettersPage>(
-        `/api/v1/letters?page=${page + 1}&page_size=25${status ? `&status=${status}` : ""}`,
+        `/api/v1/letters?page=${page + 1}&page_size=${LETTERS_PAGE_SIZE}${status ? `&status=${status}` : ""}`,
       ),
     placeholderData: keepPreviousData,
     refetchInterval: (query) =>

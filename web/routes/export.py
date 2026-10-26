@@ -18,6 +18,8 @@ HEADERS = [
     ("relevant", "רלוונטי"),
     ("complete", "הושלם"),
     ("needs_analysis", "דורש ניתוח"),
+    ("requires_review", "דורש עיון"),
+    ("passed", "עברה"),
     ("last_sent_at", "נשלח"),
     ("send_count", "מספר שליחות"),
     ("letter_url", "קישור PDF"),
