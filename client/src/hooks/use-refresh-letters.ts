@@ -10,7 +10,7 @@ export function useRefreshLetters() {
     mutationFn: () =>
       write<RefreshResult>("/api/v1/letters/refresh", "POST"),
     onSuccess: (result) => {
-      toast.success(`נמצאו ${result.new} מכתבים חדשים`);
+      toast.success(`נמצאו ${result.new} פניות חדשות`);
       queryClient.invalidateQueries({ queryKey: ["letters"] });
     },
     onError: (error) => {

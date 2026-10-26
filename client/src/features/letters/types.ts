@@ -1,12 +1,10 @@
 export type LetterStatusFilter =
   | "not_analyzed"
-  | "queued"
-  | "relevant"
-  | "irrelevant"
   | "failed"
-  | "sent"
+  | "requires_review"
   | "needs_analysis"
-  | "outdated";
+  | "relevant"
+  | "irrelevant";
 
 export type AnalysisStatus =
   "discovered" | "queued" | "analyzing" | "analyzed" | "failed";
@@ -24,6 +22,8 @@ export type LetterItem = {
   complete: boolean;
   needs_analysis: boolean;
   outdated: boolean;
+  requires_review: boolean;
+  passed: boolean;
   legacy: boolean;
   last_error: string | null;
   last_error_at: string | null;

@@ -10,7 +10,7 @@ export function SendConfirmDialog({
   return (
     <ConfirmDialog
       title="לשלוח שוב?"
-      description="המכתב כבר נשלח. לשלוח שוב לכל רשימת התפוצה?"
+      description="הפנייה כבר נשלחה. לשלוח שוב לכל רשימת התפוצה?"
       action="שליחה"
       pending={pending}
       onConfirm={onConfirm}

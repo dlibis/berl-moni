@@ -7,7 +7,7 @@ from common.schedule_due import schedule_configured
 from common.db import connect, load_programs
 from web import bootstrap
 from web.auth import require_session
-from web.views.letters import FILTERS, letter_detail, list_letters
+from web.views.letters import FILTERS, letter_detail, list_letters, patch_letter_flags
 
 letters_bp = Blueprint("letters", __name__, url_prefix="/api/v1/letters")
 
@@ -36,6 +36,21 @@ def get_letters():
 def get_letter(slug):
     with connect() as conn:
         letter = letter_detail(conn, slug, load_programs(conn))
+    return jsonify(letter) if letter else (jsonify({"error": "not found"}), 404)
+
+
+@letters_bp.patch("/<slug>")
+@require_session
+def patch_letter(slug):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "invalid body"}), 400
+    updates = {key: body[key] for key in ("requires_review", "passed") if key in body}
+    if not updates or any(not isinstance(value, bool) for value in updates.values()):
+        return jsonify({"error": "invalid body"}), 400
+    with connect() as conn:
+        programs = load_programs(conn)
+        letter = patch_letter_flags(conn, slug, programs, **updates)
     return jsonify(letter) if letter else (jsonify({"error": "not found"}), 404)
 
 

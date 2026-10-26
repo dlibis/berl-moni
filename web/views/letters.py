@@ -12,17 +12,16 @@ COMPLETE = "coalesce(jsonb_typeof(extraction->'fields') = 'object', false)"
 COLUMNS = f"""slug, letter_url, letter_date, ministry, coalesce(request_numbers, '{{}}') AS request_numbers,
     first_seen_at, analysis_status, analyzed_at, {RELEVANT} AS relevant, {COMPLETE} AS complete,
     extraction IS NULL AND summary_pdf IS NOT NULL AS legacy, extraction IS NOT NULL AS has_extraction,
-    extraction_version, last_error, last_error_at, last_sent_at, send_count, analysis_requested_by"""
+    extraction_version, last_error, last_error_at, last_sent_at, send_count, analysis_requested_by,
+    requires_review, passed"""
 
 FILTERS = {
-    "not_analyzed": "analysis_status = 'discovered'",
-    "queued": "analysis_status IN ('queued', 'analyzing')",
+    "not_analyzed": "analysis_status IN ('discovered', 'queued', 'analyzing')",
+    "failed": "analysis_status = 'failed'",
+    "requires_review": "requires_review IS TRUE",
+    "needs_analysis": f"{RELEVANT} AND NOT {COMPLETE}",
     "relevant": RELEVANT,
     "irrelevant": f"extraction IS NOT NULL AND NOT {RELEVANT}",
-    "failed": "analysis_status = 'failed'",
-    "sent": "send_count > 0",
-    "needs_analysis": f"{RELEVANT} AND NOT {COMPLETE}",
-    "outdated": "extraction IS NOT NULL",   # narrowed by is_outdated in Python
 }
 
 ORDER = "ORDER BY letter_date DESC NULLS LAST, letter_url"
@@ -33,13 +32,26 @@ def list_letters(conn, *, page: int, page_size: int, status: str | None,
     """(one page of items, the total matching `status`); `status` is a FILTERS key or None."""
     where = FILTERS[status] if status else "true"
     params = {"programs": list(programs), "limit": page_size, "offset": (page - 1) * page_size}
-    if status == "outdated":
-        items = [item for item in map(_item, conn.execute(f"SELECT {COLUMNS} FROM letters WHERE {where} {ORDER}", params))
-                 if item["outdated"]]
-        return items[params["offset"]:params["offset"] + page_size], len(items)
     total = conn.execute(f"SELECT count(*) AS total FROM letters WHERE {where}", params).fetchone()["total"]
     rows = conn.execute(f"SELECT {COLUMNS} FROM letters WHERE {where} {ORDER} LIMIT %(limit)s OFFSET %(offset)s", params)
     return [_item(row) for row in rows], total
+
+
+def patch_letter_flags(conn, slug: str, programs: dict[str, str], *,
+                       requires_review: bool | None = None, passed: bool | None = None) -> dict | None:
+    """Update manual flags; returns detail JSON or None if unknown."""
+    sets, params = [], {"slug": slug, "programs": list(programs)}
+    if requires_review is not None:
+        sets.append("requires_review = %(requires_review)s")
+        params["requires_review"] = requires_review
+    if passed is not None:
+        sets.append("passed = %(passed)s")
+        params["passed"] = passed
+    if not sets:
+        return letter_detail(conn, slug, programs)
+    row = conn.execute(f"UPDATE letters SET {', '.join(sets)} WHERE slug = %(slug)s "
+                       f"RETURNING slug", params).fetchone()
+    return letter_detail(conn, slug, programs) if row else None
 
 
 def letter_detail(conn, slug: str, programs: dict[str, str]) -> dict | None:

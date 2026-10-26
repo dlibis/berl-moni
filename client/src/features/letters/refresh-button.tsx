@@ -11,7 +11,7 @@ export function RefreshButton() {
       onClick={() => refresh.mutate()}
     >
       <RefreshCw size={16} className="me-2" />
-      {refresh.isPending ? "מרענן…" : "רענון מכתבים"}
+      {refresh.isPending ? "מרענן…" : "רענון פניות"}
     </Button>
   );
 }

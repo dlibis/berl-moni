@@ -33,7 +33,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const get = <T>(path: string) => api<T>(path);
 export const write = <T>(
   path: string,
-  method: "POST" | "PUT" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   body?: unknown,
 ) =>
   api<T>(path, {

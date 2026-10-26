@@ -24,7 +24,7 @@ export function useAnalyzeLetter() {
       ),
     onSuccess: (result, { slug }) => {
       if (result.status === "done") {
-        toast.success("המכתב כבר נותח, התוצאה השמורה מוצגת");
+        toast.success("הפנייה כבר נותחה, התוצאה השמורה מוצגת");
       } else {
         toast.success("הניתוח נכנס לתור", {
           description: result.dispatch_failed

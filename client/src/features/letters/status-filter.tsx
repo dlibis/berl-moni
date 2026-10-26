@@ -9,13 +9,11 @@ import type { LetterStatusFilter } from "./types";
 
 const OPTIONS: [LetterStatusFilter, string][] = [
   ["not_analyzed", "לא נותחו"],
-  ["queued", "בתור"],
-  ["relevant", "רלוונטיים"],
-  ["irrelevant", "לא רלוונטיים"],
-  ["failed", "נכשלו"],
-  ["sent", "נשלחו"],
+  ["failed", "תקלה"],
+  ["requires_review", "דורש עיון"],
   ["needs_analysis", "דורשים ניתוח"],
-  ["outdated", "גרסה ישנה"],
+  ["relevant", "רלוונטי"],
+  ["irrelevant", "לא רלוונטי"],
 ];
 
 export function StatusFilter({
@@ -36,7 +34,7 @@ export function StatusFilter({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">כל המכתבים</SelectItem>
+        <SelectItem value="all">כל הפניות</SelectItem>
         {OPTIONS.map(([key, text]) => (
           <SelectItem key={key} value={key}>
             {text}
