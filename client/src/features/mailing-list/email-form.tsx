@@ -6,23 +6,27 @@ import { Field } from "../../components/field";
 
 const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 export function EmailForm({
-  initial,
+  initialEmail,
+  initialName,
   onDone,
 }: {
-  initial?: string;
+  initialEmail?: string;
+  initialName?: string;
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [email, setEmail] = useState(initial ?? "");
+  const [email, setEmail] = useState(initialEmail ?? "");
+  const [name, setName] = useState(initialName ?? "");
   const [error, setError] = useState("");
   const save = useMutation({
     mutationFn: async () => {
       // No update endpoint: add the new address first so a failed add never loses the old one.
       const next = email.trim().toLowerCase();
-      if (initial === next) return;
-      await write("/api/v1/mailing_list", "POST", { email: next });
-      if (initial)
-        await write("/api/v1/mailing_list", "DELETE", { email: initial });
+      const nextName = name.trim();
+      if (initialEmail === next && initialName === nextName) return;
+      await write("/api/v1/mailing_list", "POST", { email: next, name: nextName });
+      if (initialEmail)
+        await write("/api/v1/mailing_list", "DELETE", { email: initialEmail });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mailing"] });
@@ -30,7 +34,7 @@ export function EmailForm({
     },
     onError: () =>
       setError(
-        initial
+        initialEmail
           ? "לא ניתן לעדכן את הנמען"
           : "לא ניתן להוסיף את הנמען. ייתכן שהוא קיים.",
       ),
@@ -41,10 +45,20 @@ export function EmailForm({
       setError("יש להזין כתובת דוא״ל תקינה");
       return;
     }
+    if (!name.trim()) {
+      setError("יש להזין שם");
+      return;
+    }
     save.mutate();
   }
   return (
     <form onSubmit={submit} className="mt-5 space-y-4">
+      <Field
+        label="שם"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        error={name && !name.trim() ? "יש להזין שם" : undefined}
+      />
       <Field
         label="כתובת דוא״ל"
         type="email"
@@ -55,7 +69,7 @@ export function EmailForm({
           email && !validEmail(email) ? "יש להזין כתובת דוא״ל תקינה" : error
         }
       />
-      {initial ? (
+      {initialEmail ? (
         <p className="text-xs text-muted-foreground">
           העדכון מחליף את הכתובת הקיימת.
         </p>

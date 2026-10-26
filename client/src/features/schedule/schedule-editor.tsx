@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -42,11 +42,16 @@ export function ScheduleEditor() {
   const schedule = useSchedule();
   const ranges = useScheduleDraft();
   const setRanges = useScheduleDraftApi();
+  const [alwaysSend, setAlwaysSend] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (schedule.data) setAlwaysSend(schedule.data.always_send);
+  }, [schedule.data]);
   const save = useMutation({
     mutationFn: () =>
       write<{ schedule: Range[] }>("/api/v1/schedule", "POST", {
         schedule: ranges,
+        always_send: alwaysSend,
       }),
     onSuccess: () => {
       toast.success("מועדי השליחה נשמרו");
@@ -98,6 +103,21 @@ export function ScheduleEditor() {
   if (schedule.isError || !schedule.data) return <ErrorState />;
   return (
     <div className="max-w-2xl space-y-4">
+      <section className="rounded-lg border bg-card p-6">
+        <div className="flex items-center gap-3">
+          <Checkbox
+            id="always-send"
+            checked={alwaysSend}
+            onCheckedChange={(checked) => setAlwaysSend(checked === true)}
+          />
+          <Label htmlFor="always-send" className="text-base font-medium">
+            שלח תמיד
+          </Label>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          שליחה אוטומטית שבועית (יום א׳ בשעה 09:00), בנוסף למועדים המותאמים.
+        </p>
+      </section>
       {ranges.length === 0 ? (
         <div className="rounded-lg border bg-card p-5 text-muted-foreground">
           לא הוגדרו טווחי שליחה. הוסיפו טווח כדי להתחיל.

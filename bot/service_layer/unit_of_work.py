@@ -12,6 +12,7 @@ from bot.adapters.postgres.letters import LettersRepository
 from bot.adapters.postgres.scans import ScansRepository
 from bot.adapters.postgres.send_runs import SendRunsRepository
 from common.db import connect, get_setting, list_emails, load_programs, set_setting
+from common.always_send_due import due_always_send
 from common.schedule_due import due_day
 
 
@@ -54,5 +55,8 @@ class UnitOfWork:
         return load_programs(self.conn)
 
     def due_day(self, now_utc):
-        """Today's Israel date if the schedule says a send is due now (common.schedule_due)."""
-        return due_day(now_utc, self.setting("schedule", []), self.conn)
+        """Today's Israel date if custom schedule or Always Send says a send is due now."""
+        day = due_day(now_utc, self.setting("schedule", []), self.conn)
+        if day is not None:
+            return day
+        return due_always_send(now_utc, bool(self.setting("always_send", False)), self.conn)

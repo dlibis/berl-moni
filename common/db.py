@@ -29,13 +29,22 @@ def set_setting(conn, key: str, value) -> None:
                  "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (key, Jsonb(value)))
 
 
+def list_subscribers(conn) -> list[dict]:
+    return list(conn.execute("SELECT email, name FROM mailing_list ORDER BY email"))
+
+
 def list_emails(conn) -> list[str]:
     return [r["email"] for r in conn.execute("SELECT email FROM mailing_list ORDER BY email")]
 
 
+def add_subscriber(conn, email: str, name: str) -> None:
+    """Insert one subscriber. Raises UniqueViolation on duplicates."""
+    conn.execute("INSERT INTO mailing_list (email, name) VALUES (%s, %s)", (email, name))
+
+
 def add_email(conn, email: str) -> None:
     """Insert one address (caller trims/lowercases and checks the cap). Raises UniqueViolation on duplicates."""
-    conn.execute("INSERT INTO mailing_list (email) VALUES (%s)", (email,))
+    conn.execute("INSERT INTO mailing_list (email, name) VALUES (%s, %s)", (email, ""))
 
 
 def remove_email(conn, email: str) -> bool:

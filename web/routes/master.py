@@ -1,10 +1,13 @@
 import re
 
-from flask import Blueprint, jsonify, request
+from io import BytesIO
+
+from flask import Blueprint, jsonify, request, send_file
 from psycopg.errors import UniqueViolation
 
 from common.db import connect
 from web.auth import require_session
+from web.master_xlsx import programs_to_xlsx, xlsx_to_programs
 
 master_bp = Blueprint("master", __name__, url_prefix="/api/v1/master")
 CODE_RE = re.compile(r"^[0-9]{1,6}$")
@@ -50,6 +53,34 @@ def update_program(old_code):
     except UniqueViolation:
         return jsonify({"error": "code exists"}), 400
     return (jsonify({"code": code, "name": name.strip()}), 200) if row else (jsonify({"error": "not found"}), 404)
+
+
+@master_bp.get("/download")
+@require_session
+def download_master():
+    with connect() as conn:
+        rows = list(conn.execute("SELECT code, name FROM programs ORDER BY code"))
+    buf = BytesIO(programs_to_xlsx(rows))
+    buf.seek(0)
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name="master.xlsx")
+
+
+@master_bp.post("/upload")
+@require_session
+def upload_master():
+    file = request.files.get("file")
+    if file is None or not file.filename:
+        return jsonify({"error": "missing file"}), 400
+    try:
+        programs = xlsx_to_programs(file.read())
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    with connect() as conn:
+        conn.execute("DELETE FROM programs")
+        for code, name in programs:
+            conn.execute("INSERT INTO programs (code, name) VALUES (%s, %s)", (code, name))
+    return jsonify({"count": len(programs)})
 
 
 @master_bp.delete("/<code>")
