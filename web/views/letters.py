@@ -2,11 +2,16 @@
 
 Relevance and completeness are derived here from the saved extraction and the current programs,
 never stored; `outdated` compares the saved version in Python (bot.domain.versions)."""
-from bot.domain.extraction import Extraction
+from bot.domain.extraction import (
+    PROVENANCE_COALITION_FUNDS,
+    PROVENANCE_EXACT_CLAUSES,
+    Extraction,
+    relevance_sql,
+)
 from bot.domain.report import report_view
 from bot.domain.versions import is_outdated
 
-RELEVANT = "coalesce(codes && %(programs)s::text[], false)"
+RELEVANT = relevance_sql()
 COMPLETE = "coalesce(jsonb_typeof(extraction->'fields') = 'object', false)"
 
 COLUMNS = f"""slug, letter_url, letter_date, ministry, coalesce(request_numbers, '{{}}') AS request_numbers,
@@ -32,7 +37,13 @@ def list_letters(conn, *, page: int, page_size: int, status: str | None,
                  programs: list[str]) -> tuple[list[dict], int]:
     """(one page of items, the total matching `status`); `status` is a FILTERS key or None."""
     where = FILTERS[status] if status else "true"
-    params = {"programs": list(programs), "limit": page_size, "offset": (page - 1) * page_size}
+    params = {
+        "programs": list(programs),
+        "prov_exact": PROVENANCE_EXACT_CLAUSES,
+        "prov_coalition": PROVENANCE_COALITION_FUNDS,
+        "limit": page_size,
+        "offset": (page - 1) * page_size,
+    }
     if status == "outdated":
         items = [item for item in map(_item, conn.execute(f"SELECT {COLUMNS} FROM letters WHERE {where} {ORDER}", params))
                  if item["outdated"]]
@@ -44,8 +55,15 @@ def list_letters(conn, *, page: int, page_size: int, status: str | None,
 
 def letter_detail(conn, slug: str, programs: dict[str, str]) -> dict | None:
     """The letter's item plus `report` (None until it has an extraction); None if unknown."""
-    row = conn.execute(f"SELECT {COLUMNS}, extraction FROM letters WHERE slug = %(slug)s",
-                       {"slug": slug, "programs": list(programs)}).fetchone()
+    row = conn.execute(
+        f"SELECT {COLUMNS}, extraction FROM letters WHERE slug = %(slug)s",
+        {
+            "slug": slug,
+            "programs": list(programs),
+            "prov_exact": PROVENANCE_EXACT_CLAUSES,
+            "prov_coalition": PROVENANCE_COALITION_FUNDS,
+        },
+    ).fetchone()
     if row is None:
         return None
     data = row.pop("extraction")

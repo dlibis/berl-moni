@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
+from bot.domain.extraction import PROVENANCE_COALITION_FUNDS, PROVENANCE_EXACT_CLAUSES, relevance_sql
 from bot.domain.feed import FeedLetter
 
 
@@ -23,11 +24,14 @@ class LettersRepository:
     def auto_eligible(self, auto_since: str | None) -> list[str]:
         """What the auto job sends: analyzed, complete, relevant to the current programs, never sent, and
         first seen at or after `auto_since` (None: any time). Oldest first; letter_url breaks ties."""
+        rel = relevance_sql("ARRAY(SELECT code FROM programs)")
         return [r["letter_url"] for r in self.conn.execute(
-            "SELECT letter_url FROM letters WHERE analysis_status = 'analyzed' AND send_count = 0 "
-            "AND jsonb_typeof(extraction->'fields') = 'object' AND codes && ARRAY(SELECT code FROM programs) "
-            "AND first_seen_at >= coalesce(%s::timestamptz, '-infinity') ORDER BY first_seen_at, letter_url",
-            (auto_since,))]
+            f"SELECT letter_url FROM letters WHERE analysis_status = 'analyzed' AND send_count = 0 "
+            f"AND jsonb_typeof(extraction->'fields') = 'object' AND {rel} "
+            f"AND first_seen_at >= coalesce(%(auto_since)s::timestamptz, '-infinity') "
+            f"ORDER BY first_seen_at, letter_url",
+            {"prov_exact": PROVENANCE_EXACT_CLAUSES, "prov_coalition": PROVENANCE_COALITION_FUNDS,
+             "auto_since": auto_since})]
 
     def load_pdfs(self, urls) -> list[bytes]:
         """Summary PDFs in the order of `urls`."""

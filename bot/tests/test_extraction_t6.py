@@ -55,12 +55,17 @@ def test_heading_variants_found_with_narrative(calls, name):
     assert result.fields.uses("000001")[0].text == "סיכום"
 
 
-@pytest.mark.parametrize("name", [
-    "pending_170_171_not_relevant.pdf", "pending_21_not_relevant.pdf"])
-def test_irrelevant_letter_makes_no_llm_call(calls, name):
-    result = _extract(name)
-    assert not result.relevant_to(MASTER) and not result.complete
-    assert calls == []
+def test_not_relevant_letter_still_runs_llm_and_is_complete(calls):
+    result = _extract("pending_21_not_relevant.pdf")
+    assert not result.relevant_to(MASTER) and result.complete
+    assert len(calls) == 1
+
+
+def test_exact_clause_makes_relevant_without_master_codes(calls):
+    result = _extract("pending_170_171_not_relevant.pdf")
+    assert result.relevant_to(MASTER) and result.complete
+    assert result.relevance_provenance is not None
+    assert len(calls) == 1
 
 
 def test_missing_heading_is_extract_error(calls, monkeypatch):

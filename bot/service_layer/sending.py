@@ -28,7 +28,7 @@ def send_letter(uow, ports: Ports, slug: str, user: str | None, resend: bool = F
     if letter["analysis_status"] != "analyzed" or saved is None:  # legacy rows have no JSON to render
         return SendResult("not_sendable")
     extraction = Extraction.from_json(saved)
-    if not extraction.complete or not extraction.relevant_to(uow.programs()):
+    if not extraction.complete or not extraction.is_relevant(uow.programs()):
         return SendResult("not_sendable")
     if letter["send_count"] > 0 and not resend:
         return SendResult("confirm_resend")

@@ -150,6 +150,11 @@ non-flaky; the LLM's reasoning is reserved for fuzzy fields.
 - **Acceptance:** a letter with no tracked row produces **no** summary; a letter with
   ≥ 1 tracked row produces a summary. 21658 is relevant.
 
+> **Superseded (product behavior):** Agent System Specification **§2 Relevance** defines
+> three paths — exact clause strings (§2.1), `coalition_funds = כן`, and master-code match.
+> FR-5 here describes **path (3) only**; paths (1) and (2) can make a letter relevant without
+> a tracked table row. Implementation: `bot/domain/extraction.py` (`is_relevant`).
+
 ### FR-6 — The table shows a **"master"** column
 - **Rule:** the table gains one column, header **`master`**, value `כן` when the item's
   normalized code is in the Master code set (§FR-4), else `לא`. It is a **per-item**
