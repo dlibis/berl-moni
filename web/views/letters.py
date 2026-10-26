@@ -34,7 +34,11 @@ ORDER = "ORDER BY letter_date DESC NULLS LAST, letter_url"
 
 def all_letter_rows(conn, *, programs: list[str]) -> list[dict]:
     """All letters (unfiltered), same row shape as list_letters items."""
-    params = {"programs": list(programs)}
+    params = {
+        "programs": list(programs),
+        "prov_exact": PROVENANCE_EXACT_CLAUSES,
+        "prov_coalition": PROVENANCE_COALITION_FUNDS,
+    }
     rows = conn.execute(f"SELECT {COLUMNS} FROM letters {ORDER}", params)
     return [_item(row) for row in rows]
 
