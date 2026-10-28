@@ -138,10 +138,36 @@ def test_complete_result_is_done_without_llm(uow, analyzed_complete):
     assert request_analysis(uow, analyzed_complete, None, lambda: True).outcome == "done"
 
 
-def test_newly_relevant_letter_needs_llm(uow, analyzed_irrelevant, add_program):  # Review Focus 1
+def test_newly_relevant_letter_requires_explicit_reanalysis(uow, analyzed_irrelevant, add_program):
     assert request_analysis(uow, analyzed_irrelevant, None, lambda: True).outcome == "done"
     add_program("200101")
-    assert request_analysis(uow, analyzed_irrelevant, None, lambda: True).outcome == "queued"
+    assert request_analysis(uow, analyzed_irrelevant, None, lambda: True).outcome == "done"
+    assert request_analysis(uow, analyzed_irrelevant, "a@x", lambda: True, reanalyze=True).outcome == "queued"
+
+
+@pytest.mark.parametrize("auto", [False, True])
+def test_refresh_preserves_existing_report(uow, analyzed_complete, auto):
+    before = uow.letters.get(analyzed_complete)
+    assert refresh_feed(uow, lambda: [letter("u9"), letter("new")], auto=auto) == (1, 1)
+    after = uow.letters.get(analyzed_complete)
+    for key in ("analysis_status", "extraction", "analyzed_at", "attempts", "analysis_requested_by"):
+        assert after[key] == before[key]
+    assert uow.letters.get(slug_for("new"))["analysis_status"] == ("queued" if auto else "discovered")
+
+
+@pytest.mark.parametrize("status", ["analyzed", "failed", "discovered"])
+@pytest.mark.parametrize("reanalyze", [False, True])
+def test_saved_report_requires_explicit_reanalysis(status, reanalyze):
+    from unittest.mock import Mock
+
+    uow = Mock()
+    uow.letters.get.return_value = {"analysis_status": status, "extraction": {"fields": None}}
+    uow.letters.queue.return_value = True
+    dispatch = Mock(return_value=True)
+    result = request_analysis(uow, "slug", "a@x", dispatch, reanalyze=reanalyze)
+    assert result == (("queued", True) if reanalyze else ("done", False))
+    assert uow.letters.queue.call_count == int(reanalyze)
+    assert dispatch.call_count == int(reanalyze)
 
 
 def test_drain_analyzes_and_saves_json(uow, queued, fake_extractor):

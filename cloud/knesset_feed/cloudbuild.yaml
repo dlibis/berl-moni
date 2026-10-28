@@ -3,3 +3,5 @@ steps:
     args: [build, -f, cloud/knesset_feed/Dockerfile, -t, 'me-west1-docker.pkg.dev/$PROJECT_ID/knesset-feed/service:$BUILD_ID', .]
 images:
   - 'me-west1-docker.pkg.dev/$PROJECT_ID/knesset-feed/service:$BUILD_ID'
+options:
+  logging: CLOUD_LOGGING_ONLY

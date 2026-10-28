@@ -12,6 +12,9 @@ responses, and limits each PDF to 64 MiB. Both endpoints require
 
 ## Deployment
 
+For transferring management or recreating this service in another Google
+account/project, see [the account migration runbook](../../docs/cloud-run-account-migration.md).
+
 Project: `berl-moni-fetch-20261026`, owned by `phoenix409@gmail.com`.
 Service and Artifact Registry repository: `knesset-feed`, region `me-west1`.
 `.gcloudignore` restricts the upload to the service and its feed/domain modules;
@@ -22,8 +25,15 @@ Build from the repository root with:
 ```sh
 gcloud builds submit --project=berl-moni-fetch-20261026 \
   --account=phoenix409@gmail.com --region=me-west1 \
+  --service-account=projects/berl-moni-fetch-20261026/serviceAccounts/knesset-build@berl-moni-fetch-20261026.iam.gserviceaccount.com \
   --config=cloud/knesset_feed/cloudbuild.yaml .
 ```
+
+The dedicated builder can read staged source, write images in this repository,
+and write Cloud Logging build logs. These permissions are separate from the
+runtime service account, which has no project roles.
+
+Live service base URL: `https://knesset-feed-706559335784.me-west1.run.app`.
 
 Deploy the resulting Artifact Registry image with request-based billing,
 1 vCPU, 512 MiB memory, zero minimum instances, one maximum instance, four

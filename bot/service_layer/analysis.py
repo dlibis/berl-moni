@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from typing import Callable, Literal, NamedTuple
 
 from bot.domain.errors import ExtractionError
-from bot.domain.extraction import Extraction
 from bot.domain.feed import FeedLetter
 from bot.domain.slug import letter_slug
 from bot.domain.versions import analysis_version
@@ -38,18 +37,15 @@ def refresh_feed(uow, feed: Callable[[], list[FeedLetter]], auto: bool = False) 
 
 def request_analysis(uow, slug: str, user: str | None, dispatch: Callable[[], bool],
                      reanalyze: bool = False) -> AnalysisRequest:
-    """Queue a letter and dispatch the worker, unless it is in progress or already done. A saved result
-    is done when it is complete or not relevant to the current programs; `reanalyze` queues it anyway."""
+    """Queue a letter and dispatch the worker; existing reports require explicit `reanalyze`."""
     letter = uow.letters.get(slug)
     if letter is None:
         return AnalysisRequest("not_found", False)
     status = letter["analysis_status"]
     if status in ("queued", "analyzing"):
         return AnalysisRequest("busy", False)
-    if status == "analyzed" and not reanalyze:
-        saved = letter["extraction"] and Extraction.from_json(letter["extraction"])
-        if not saved or saved.complete or not saved.is_relevant(uow.programs()):
-            return AnalysisRequest("done", False)
+    if (status == "analyzed" or letter["extraction"] is not None) and not reanalyze:
+        return AnalysisRequest("done", False)
     if not uow.letters.queue(slug, user, (status,)):  # another request got there first
         uow.rollback()
         return AnalysisRequest("busy", False)

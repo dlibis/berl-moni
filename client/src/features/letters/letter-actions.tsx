@@ -30,10 +30,9 @@ export function LetterActions({
   const send = useSendLetter();
   const { slug, analysis_status: status } = letter;
   const analyzed = status === "analyzed";
-  const canAnalyze =
-    ["discovered", "failed"].includes(status) ||
-    (analyzed && letter.needs_analysis);
-  const canReanalyze = analyzed || letter.legacy;
+  const hasReport = analyzed || letter.report_available || letter.legacy;
+  const canAnalyze = ["discovered", "failed"].includes(status) && !hasReport;
+  const canReanalyze = hasReport && !["queued", "analyzing"].includes(status);
   const canSend =
     analyzed && letter.relevant && letter.complete && !letter.legacy;
   const analyzeReady = canAnalyze || canReanalyze;
@@ -90,7 +89,7 @@ export function LetterActions({
                   else setConfirmReanalyze(true);
                 }}
               >
-                ניתוח
+                {hasReport ? "ניתוח מחדש" : "ניתוח"}
               </Button>
             </span>
             <span title={canSend ? undefined : sendBlocker} className="block">
