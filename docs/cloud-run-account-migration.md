@@ -116,8 +116,8 @@ Before changing callers, check the new service with the same API contract:
 
 Update GitHub repository variable `KNESSET_FETCH_URL` and secret
 `KNESSET_FETCH_TOKEN`. Update the same variable and secret in the production
-Vercel project, then redeploy Vercel so its runtime uses the new values. Both
-GitHub workflows (`letters.yml` and `always_send.yml`) read those repository
+Vercel project, then redeploy Vercel so its runtime uses the new values. The
+GitHub worker workflow (`letters.yml`) reads those repository
 settings. Do not dispatch an email workflow as a connectivity test; it can
 send real mail.
 

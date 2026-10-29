@@ -1,7 +1,7 @@
 """GitHub Actions dispatch: dispatch_workflow() starts the letters worker (`mode: drain`) through the
 REST API (https://docs.github.com/rest/actions/workflows#create-a-workflow-dispatch-event).
 
-A failed dispatch is not an error for the caller: the letter stays queued and the hourly run drains it.
+A failed dispatch is not an error for the caller: work stays queued for the hourly scheduler.
 Logs the HTTP status only, never the token."""
 import logging
 

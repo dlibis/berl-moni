@@ -80,21 +80,28 @@ def has_queued(conn) -> bool:
                         "OR (analysis_status = 'analyzing' AND lease_expires_at < now())) AS queued").fetchone()["queued"]
 
 
+def eligibility(conn, now: datetime) -> tuple[bool, bool]:
+    """Return (scheduled work due, analysis queued) for both admission paths."""
+    from common.always_send_due import due_always_send
+
+    row = conn.execute("SELECT value FROM settings WHERE key = 'schedule'").fetchone()
+    schedule = row["value"] if row else []
+    always_row = conn.execute("SELECT value FROM settings WHERE key = 'always_send'").fetchone()
+    always = bool(always_row["value"]) if always_row else False
+    hours_row = conn.execute("SELECT value FROM settings WHERE key = 'fetch_every_hours'").fetchone()
+    every_hours = hours_row["value"] if hours_row else None
+    last_row = conn.execute("SELECT value FROM settings WHERE key = 'last_feed_refresh_at'").fetchone()
+    last_at = last_row["value"] if last_row else None
+    due = (due_day(now, schedule, conn, always) is not None
+           or due_always_send(now, always, conn) is not None or resume_requested(conn)
+           or fetch_due(now, every_hours, last_at))
+    return due, has_queued(conn)
+
+
 def main() -> None:
-    """Prints due=<bool> and queued=<bool> lines, for `>> $GITHUB_OUTPUT` in letters.yml."""
+    """Print GitHub job outputs; invoke with `python -m common.schedule_due`."""
     with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as conn:
-        row = conn.execute("SELECT value FROM settings WHERE key = 'schedule'").fetchone()
-        schedule = row["value"] if row else []
-        always_row = conn.execute("SELECT value FROM settings WHERE key = 'always_send'").fetchone()
-        always = bool(always_row["value"]) if always_row else False
-        now = datetime.now(timezone.utc)
-        hours_row = conn.execute("SELECT value FROM settings WHERE key = 'fetch_every_hours'").fetchone()
-        every_hours = hours_row["value"] if hours_row else None
-        last_row = conn.execute("SELECT value FROM settings WHERE key = 'last_feed_refresh_at'").fetchone()
-        last_at = last_row["value"] if last_row else None
-        due = (due_day(now, schedule, conn, always) is not None or resume_requested(conn)
-               or fetch_due(now, every_hours, last_at))
-        queued = has_queued(conn)
+        due, queued = eligibility(conn, datetime.now(timezone.utc))
     print(f"due={str(due).lower()}")
     print(f"queued={str(queued).lower()}")
 

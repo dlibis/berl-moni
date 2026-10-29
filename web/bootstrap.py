@@ -19,7 +19,7 @@ def uow() -> UnitOfWork:
 
 
 def dispatch() -> bool:
-    """Start the worker workflow; False if it could not be started (the hourly run drains the queue)."""
+    """Start the worker workflow; False leaves work queued for the hourly scheduler."""
     return dispatch_workflow(os.environ.get("GITHUB_DISPATCH_TOKEN"),
                              os.environ.get("GITHUB_REPOSITORY", "dlibis/berl-moni"))
 
