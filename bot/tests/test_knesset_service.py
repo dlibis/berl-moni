@@ -1,8 +1,10 @@
 from datetime import date
+from io import BytesIO
 from unittest.mock import Mock
 
 import pytest
 from requests import HTTPError
+from urllib3.response import HTTPResponse
 
 from bot.adapters.knesset.remote import KnessetClient
 from bot.domain.errors import FeedUnreachable
@@ -40,7 +42,7 @@ def test_service_response_round_trips_to_domain(client, monkeypatch):
     response = Mock()
     response.json.return_value = result.get_json()
     get = Mock(return_value=response)
-    monkeypatch.setattr("bot.adapters.knesset.remote.get", get)
+    monkeypatch.setattr("bot.adapters.knesset.remote.Session.get", get)
     assert KnessetClient("https://fetch.example/", TOKEN).fetch_letters() == [LETTER]
     assert get.call_args.kwargs["headers"] == HEADERS
     assert get.call_args.args == ("https://fetch.example/feed",)
@@ -57,7 +59,7 @@ def test_feed_failure_is_not_an_empty_success(client, monkeypatch):
 def test_remote_rejects_invalid_feed(monkeypatch, body):
     response = Mock()
     response.json.return_value = body
-    monkeypatch.setattr("bot.adapters.knesset.remote.get", lambda *a, **kw: response)
+    monkeypatch.setattr("bot.adapters.knesset.remote.Session.get", lambda *a, **kw: response)
     with pytest.raises(FeedUnreachable):
         KnessetClient("https://fetch.example", TOKEN).fetch_letters()
 
@@ -65,9 +67,42 @@ def test_remote_rejects_invalid_feed(monkeypatch, body):
 def test_remote_http_error_is_feed_unreachable(monkeypatch):
     response = Mock()
     response.raise_for_status.side_effect = HTTPError()
-    monkeypatch.setattr("bot.adapters.knesset.remote.get", lambda *a, **kw: response)
+    monkeypatch.setattr("bot.adapters.knesset.remote.Session.get", lambda *a, **kw: response)
     with pytest.raises(FeedUnreachable):
         KnessetClient("https://fetch.example", TOKEN).fetch_letters()
+
+
+@pytest.mark.parametrize("status", [429, 502, 503, 504])
+def test_remote_retries_transient_status_then_succeeds(monkeypatch, status):
+    request = Mock(side_effect=[HTTPResponse(status=status, body=BytesIO(b"busy"), preload_content=False),
+                                HTTPResponse(status=200, body=BytesIO(b"[]"), preload_content=False)])
+    monkeypatch.setattr("urllib3.connectionpool.HTTPSConnectionPool._make_request", request)
+    # Avoid environment proxy configuration; exercise the real HTTPAdapter and Retry.
+    monkeypatch.setenv("NO_PROXY", "fetch.example")
+    assert KnessetClient("https://fetch.example", TOKEN).fetch_letters() == []
+    assert request.call_count == 2
+
+
+@pytest.mark.parametrize("status,attempts", [(429, 5), (401, 1), (403, 1)])
+def test_remote_retry_limit_and_permanent_errors(monkeypatch, status, attempts):
+    request = Mock(side_effect=lambda *a, **kw: HTTPResponse(status=status, body=BytesIO(b"busy"), preload_content=False))
+    monkeypatch.setattr("urllib3.connectionpool.HTTPSConnectionPool._make_request", request)
+    monkeypatch.setenv("NO_PROXY", "fetch.example")
+    monkeypatch.setattr("urllib3.util.retry.time.sleep", Mock())
+    with pytest.raises(FeedUnreachable, match=f"HTTP {status}"):
+        KnessetClient("https://fetch.example", TOKEN).fetch_letters()
+    assert request.call_count == attempts
+
+
+def test_remote_caps_retry_after(monkeypatch):
+    request = Mock(side_effect=[HTTPResponse(status=429, headers={"Retry-After": "600"}, body=BytesIO(b"busy"), preload_content=False),
+                                HTTPResponse(status=200, body=BytesIO(b"[]"), preload_content=False)])
+    monkeypatch.setattr("urllib3.connectionpool.HTTPSConnectionPool._make_request", request)
+    monkeypatch.setenv("NO_PROXY", "fetch.example")
+    sleep = Mock()
+    monkeypatch.setattr("urllib3.util.retry.time.sleep", sleep)
+    assert KnessetClient("https://fetch.example", TOKEN).fetch_letters() == []
+    sleep.assert_called_once_with(10)
 
 
 @pytest.mark.parametrize("url,token", [("http://fetch.example", TOKEN), ("https://fetch.example", "")])
