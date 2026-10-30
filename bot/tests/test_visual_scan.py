@@ -104,6 +104,15 @@ def test_visibly_blank_half_is_zero_but_unknown_is_rejected(pdf_path):
         read(pdf_path, models)
 
 
+def test_blank_change_is_zero_only_when_row_is_unchanged(pdf_path):
+    row = {"code": "194101", "name": "שכר", "expenditure": {"before": 92868, "change": None, "after": 92868}}
+    models = FakeModels({"pages": [page(1, [row]), page(2)]})
+    assert read(pdf_path, models).table.rows[0][2:] == (92868, 92868)
+    row["expenditure"]["after"] = 92000
+    with pytest.raises(ExtractionError, match="blank"):
+        read(pdf_path, models)
+
+
 @pytest.mark.parametrize("numbers", [[1], [1, 1], [2, 1], [1, 2, 3]])
 def test_all_pages_must_be_returned_once_in_order(pdf_path, numbers):
     models = FakeModels({"pages": [page(n) for n in numbers]})

@@ -79,6 +79,8 @@ def _validate_page(page: ScanPage) -> None:
             values.after = 0
         elif values.blank_after:
             raise ExtractionError(f"Conflicting blank after value: {row.code}")
+        if values.change is None and values.before is not None and values.before == values.after:
+            values.change = 0
         if None in (values.before, values.change, values.after):
             raise ExtractionError(f"Unreadable or blank expenditure value: {row.code}")
         if abs(values.before + values.change - values.after) >= 0.01:
