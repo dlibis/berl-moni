@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests
-from langchain_google_genai.chat_models import GoogleAPIError
+from pydantic_ai.exceptions import ModelHTTPError
 
 from bot.adapters.postgres.email_log import EmailLogRepository
 from bot.adapters.postgres.send_runs import SendRunsRepository
@@ -33,7 +33,7 @@ class Quota(Exception):
 
 
 def model_overloaded():
-    return GoogleAPIError(503, {"error": {
+    return ModelHTTPError(503, "gemini", {"error": {
         "code": 503, "message": "This model is currently experiencing high demand. Please try again later.",
         "status": "UNAVAILABLE",
     }})
@@ -41,10 +41,10 @@ def model_overloaded():
 
 @pytest.mark.parametrize("error, reason", [
     (model_overloaded(), "model_overloaded"),
-    (GoogleAPIError(503, {"error": {"message": "The model is overloaded"}}), "model_overloaded"),
-    (GoogleAPIError(503, {"error": {"message": "Service unavailable"}}), "provider_5xx"),
-    (GoogleAPIError(500, {"error": {"message": "Internal server error"}}), "provider_5xx"),
-    (GoogleAPIError(429, {"error": {"message": "Resource exhausted"}}), "quota"),
+    (ModelHTTPError(503, "gemini", {"error": {"message": "The model is overloaded"}}), "model_overloaded"),
+    (ModelHTTPError(503, "gemini", {"error": {"message": "Service unavailable"}}), "provider_5xx"),
+    (ModelHTTPError(500, "gemini", {"error": {"message": "Internal server error"}}), "provider_5xx"),
+    (ModelHTTPError(429, "gemini", {"error": {"message": "Resource exhausted"}}), "quota"),
 ])
 def test_model_overload_has_a_specific_reason(error, reason):
     assert services.failure_reason(error) == reason
@@ -55,7 +55,7 @@ def test_failure_is_a_github_annotation_with_the_error_and_no_address(monkeypatc
     url = "https://x/4_21822.pdf"
     assert services.log_failure(url, model_overloaded()) == "model_overloaded"
     out = capsys.readouterr().out
-    assert out.startswith("::error title=Letter 21822 failed::model_overloaded (GoogleAPIError): ")
+    assert out.startswith("::error title=Letter 21822 failed::model_overloaded (ModelHTTPError): ")
     assert "high demand" in out and out.rstrip().endswith(f"%0A{url}")
     services.log_failure(url, requests.Timeout("timed out talking to staff@example.com"))
     assert "staff@example.com" not in capsys.readouterr().out
@@ -120,8 +120,8 @@ def db(test_db_url, stubs, monkeypatch, tmp_path):
             set_setting(conn, key, value)
         for email in LIST + [REPLY]:
             conn.execute("INSERT INTO mailing_list (email) VALUES (%s)", (email,))
-    for name, value in dict(DATABASE_URL=test_db_url, RESEND_API_KEY="re_test", MODEL_NAME="m",
-                            MODEL_PROVIDER="openai", OPENAI_API_KEY="k").items():
+    for name, value in dict(DATABASE_URL=test_db_url, RESEND_API_KEY="re_test", MODEL="openai:m",
+                            OPENAI_API_KEY="k").items():
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(main, "OUTPUT_DIR", tmp_path / "out")
     return test_db_url

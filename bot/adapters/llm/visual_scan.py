@@ -1,7 +1,7 @@
-"""Read an entire scanned PDF in one call to the configured multimodal model."""
+"""Read an entire scanned PDF in one call to the configured multimodal model. An answer that fails the
+checks below goes back to the model once, with the problem, before the letter fails."""
 from __future__ import annotations
 
-import base64
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,43 +94,52 @@ class VisualDocument:
     history: list[tuple[str, Table]]
 
 
-def read_document(path: str, *, model: str, provider: str, api_key: str, client=None) -> VisualDocument:
-    import pymupdf
-    from langchain_core.messages import HumanMessage
-
-    if not api_key:
-        raise ExtractionError("A model API key is required for visual scan extraction")
-    with pymupdf.open(path) as pdf:
-        page_count = len(pdf)
-    if not page_count:
-        raise ExtractionError("Scanned document has no pages")
-    if client is None:
-        from langchain.chat_models import init_chat_model
-        client = init_chat_model(model, model_provider=provider, api_key=api_key, max_retries=0)
-    encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
-    result = client.with_structured_output(ScanDocument).invoke([HumanMessage(content=[
-        {"type": "text", "text": f"{PROMPT}\nThe PDF has {page_count} pages; return all {page_count}."},
-        {"type": "file", "source_type": "base64", "mime_type": "application/pdf",
-         "data": encoded, "filename": "letter.pdf"},
-    ])])
-    try:
-        document = ScanDocument.model_validate(result)
-    except (ValueError, TypeError) as error:
-        raise ExtractionError("Visual model returned an invalid scan document") from error
+def _validate(document: ScanDocument, page_count: int) -> None:
     if [page.page_number for page in document.pages] != list(range(1, page_count + 1)):
         raise ExtractionError("Visual model omitted, duplicated, or reordered PDF pages")
-    pages, rows, history = [], [], []
     for page in document.pages:
         try:
             _validate_page(page)
         except ExtractionError as error:
             raise ExtractionError(f"Page {page.page_number}: {error}") from error
+    if not any(page.rows for page in document.pages):
+        raise ExtractionError("No budget program rows found in scanned document")
+
+
+def read_document(path: str, *, model) -> VisualDocument:
+    """`model`: a pydantic_ai '<provider>:<model>' string or Model."""
+    import pymupdf
+    from pydantic_ai import Agent, BinaryContent, ModelRetry, UnexpectedModelBehavior
+
+    with pymupdf.open(path) as pdf:
+        page_count = len(pdf)
+    if not page_count:
+        raise ExtractionError("Scanned document has no pages")
+    # One retry with the problem; no HTTP retries — each attempt resends the whole PDF.
+    agent = Agent(model, output_type=ScanDocument, retries={"output": 1}, model_settings={"max_retries": 0})
+    problems = []
+
+    @agent.output_validator
+    def check(document: ScanDocument) -> ScanDocument:
+        try:
+            _validate(document, page_count)
+        except ExtractionError as error:
+            problems.append(str(error))
+            raise ModelRetry(str(error)) from error
+        return document
+
+    try:
+        document = agent.run_sync([f"{PROMPT}\nThe PDF has {page_count} pages; return all {page_count}.",
+                                   BinaryContent(Path(path).read_bytes(), media_type="application/pdf")]).output
+    except UnexpectedModelBehavior as error:
+        raise ExtractionError(f"{problems[-1] if problems else 'Visual model returned an invalid scan document'}"
+                              " (after one retry)") from error
+    pages, rows, history = [], [], []
+    for page in document.pages:
         pages.append(page.text)
         rows.extend((r.code.zfill(6), r.name.strip(), r.expenditure.before, r.expenditure.after)
                     for r in page.rows)
         history.extend((h.label or "היסטוריה תקציבית של הפנייה", Table(tuple(h.columns),
                        tuple(tuple(row) for row in h.rows))) for h in page.history)
-    if not rows:
-        raise ExtractionError("No budget program rows found in scanned document")
     return VisualDocument("\n".join(pages), Table(("number", "name", "הוצאה from", "הוצאה to"),
                                                 tuple(rows)), history)

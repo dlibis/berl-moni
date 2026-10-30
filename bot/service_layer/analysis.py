@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Callable, Literal, NamedTuple
 
 from bot.domain.feed import FeedLetter
+from bot.domain.slug import letter_slug
 from bot.domain.versions import analysis_version
 from bot.service_layer.services import LetterExtractor, log_failure
 
@@ -79,4 +80,7 @@ def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], mod
         analyzed += uow.letters.finish_analysis(url, lease, result.to_json(), analysis_version(model),
                                                 sorted(result.codes()), result.source_sha256, result.source_size)
         uow.commit()
+        logger.info("%s: analyzed (%s)%s", letter_slug(url), "relevant" if result.fields else "not relevant",
+                    f", llm {result.llm_usage}" if result.llm_usage else "")
+    logger.info("analysis: %d analyzed%s", analyzed, ", some failed (see above)" if failed else "")
     return DrainResult(analyzed, failed)

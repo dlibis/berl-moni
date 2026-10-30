@@ -246,6 +246,7 @@ def fetch_if_due(uow, ports: Ports, now: datetime) -> int:
     """Pull and analyze the feed when the fetch schedule is due; never send mail."""
     last = uow.setting("last_feed_refresh_at")
     if not fetch_due(now, uow.setting("fetch_every_hours"), last):
+        logger.info("feed fetch not due (last fetch %s): nothing else to do", last)
         return 0
     from bot.service_layer.analysis import drain_queue, refresh_feed
     try:
@@ -266,6 +267,7 @@ def send_job(uow, ports: Ports) -> int:
         return resume_run(uow, ports, run, now.astimezone(ISRAEL).date())
     day = uow.due_day(now)
     if day is None:
+        logger.info("not a send day")
         return fetch_if_due(uow, ports, now)
 
     from_address = uow.setting("from_address", "")

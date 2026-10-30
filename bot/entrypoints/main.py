@@ -6,7 +6,7 @@ bot.service_layer; with no flag it drains the analysis queue, then runs services
     uv run python -m bot.entrypoints.main --no-email            # local: render PDFs to files/outputs/, write nothing to Neon
 
 Everything but secrets lives in Neon (programs, mailing list, schedule, addresses, limits);
-the model (MODEL_NAME, MODEL_PROVIDER, its key) and RESEND_API_KEY come from the environment.
+the model (MODEL and its provider's key) and RESEND_API_KEY come from the environment.
 """
 import argparse
 import sys

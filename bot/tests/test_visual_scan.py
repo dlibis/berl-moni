@@ -1,25 +1,24 @@
-import base64
-
 import pytest
+from pydantic_ai import BinaryContent, ModelResponse, ToolCallPart
+from pydantic_ai.models.function import FunctionModel
 
-from bot.adapters.llm.visual_scan import ScanDocument, read_document
+from bot.adapters.llm.visual_scan import read_document
 from bot.domain.errors import ExtractionError
 
 
 class FakeModels:
-    def __init__(self, data):
-        self.data = data
+    """Answers every request with `data` (or each in turn, given several), and keeps what it was sent."""
+
+    def __init__(self, *data):
+        self.data = list(data)
         self.call = None
         self.calls = 0
 
-    def with_structured_output(self, schema):
-        assert schema is ScanDocument
-        return self
-
-    def invoke(self, messages):
+    def respond(self, messages, info):
         self.call = messages
         self.calls += 1
-        return self.data
+        data = self.data[min(self.calls, len(self.data)) - 1]
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, data)])
 
 
 @pytest.fixture
@@ -39,7 +38,7 @@ def page(number, rows=(), history=(), text=""):
 
 
 def read(pdf_path, models):
-    return read_document(str(pdf_path), model="test", provider="test", api_key="test", client=models)
+    return read_document(str(pdf_path), model=FunctionModel(models.respond))
 
 
 def test_visual_document_sends_whole_pdf_once_and_keeps_repeated_codes(pdf_path):
@@ -52,9 +51,9 @@ def test_visual_document_sends_whole_pdf_once_and_keeps_repeated_codes(pdf_path)
     assert result.history[0][0] == "עבר"
     assert result.history[0][1].rows == (("2025", "100"),)
     assert models.calls == 1
-    block = models.call[0].content[1]
-    assert block["type"] == "file" and block["mime_type"] == "application/pdf"
-    assert base64.b64decode(block["data"]) == pdf_path.read_bytes()
+    pdf = models.call[0].parts[0].content[1]
+    assert isinstance(pdf, BinaryContent) and pdf.media_type == "application/pdf"
+    assert pdf.data == pdf_path.read_bytes()
 
 
 def test_visual_document_rejects_missing_values_and_bad_arithmetic(pdf_path):
@@ -133,26 +132,18 @@ def test_invalid_document_and_history_fail_closed(pdf_path, data, error):
         read(pdf_path, FakeModels(data))
 
 
-def test_missing_key_does_not_call_model(pdf_path):
-    models = FakeModels({})
-    with pytest.raises(ExtractionError, match="API key"):
-        read_document(str(pdf_path), model="test", provider="test", api_key="", client=models)
-    assert models.calls == 0
+def test_a_bad_answer_gets_one_retry_with_the_problem(pdf_path):
+    row = {"code": "045203", "name": "שם", "expenditure": {"before": 1, "change": 2, "after": 4}}
+    good = {**row, "expenditure": {"before": 1, "change": 2, "after": 3}}
+    models = FakeModels({"pages": [page(1), page(2, [row])]}, {"pages": [page(1), page(2, [good])]})
+    assert read(pdf_path, models).table.rows[0][2:] == (1, 3)
+    assert models.calls == 2
+    assert "arithmetic mismatch" in str(models.call[-1].parts[0].content)  # the model was told what was wrong
 
 
-def test_document_reader_uses_configured_model_and_provider(pdf_path, monkeypatch):
-    row = {"code": "45203", "name": "שם", "expenditure": {"before": 1, "change": 2, "after": 3}}
-    models = FakeModels({"pages": [page(1, [row]), page(2)]})
-    settings = []
-
-    def init(model, **kwargs):
-        settings.append((model, kwargs))
-        return models
-
-    monkeypatch.setattr("langchain.chat_models.init_chat_model", init)
-    result = read_document(str(pdf_path), model="configured-model", provider="configured-provider", api_key="test")
-    assert settings == [("configured-model", {"model_provider": "configured-provider", "api_key": "test", "max_retries": 0})]
-    assert models.calls == 1
-    assert result.table.rows[0][0] == "045203"
-
-
+def test_two_bad_answers_fail_with_the_problem(pdf_path):
+    row = {"code": "045203", "name": "שם", "expenditure": {"before": 1, "change": 2, "after": 4}}
+    models = FakeModels({"pages": [page(1), page(2, [row])]})
+    with pytest.raises(ExtractionError, match=r"Page 2:.*arithmetic.*after one retry"):
+        read(pdf_path, models)
+    assert models.calls == 2

@@ -15,13 +15,14 @@ from bot.adapters.resend.email_sender import send_email
 from bot.adapters.summary_pdf.renderer import SummaryPdfRenderer
 from bot.domain.extraction import Extractor
 from bot.service_layer.services import Ports
-from common.config import llm_settings
+from common.config import llm_model
 from common.env import load_env
 
 
 def setup() -> None:
     """Process-wide setup, once per entry point: .env, then logging."""
     load_env()
+    os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")  # pydantic_ai prints a logo on first use otherwise
     logging.basicConfig(level=logging.INFO)
     # httpx logs every request line (incl. the OpenAI call) at INFO — quiet it so it
     # doesn't drown the app's own logs; keep warnings/errors.
@@ -32,19 +33,18 @@ def setup() -> None:
 
 
 def extractor(programs: dict) -> Extractor:
-    """The Extractor with the configured model (MODEL_NAME, MODEL_PROVIDER, its key)."""
+    """The Extractor with the configured model (MODEL and its provider's key)."""
+    from pydantic_ai.models import infer_model
+
     client = _knesset_client()
     load = partial(open_letter, request_for=client.pdf_request) if client else open_letter
-    settings = llm_settings()
-    analyzer = LlmAnalyzer(**settings)
-    visual = partial(read_document, model=analyzer.model, provider=settings["provider"] or "openai",
-                     api_key=settings["api_key"])
-    return Extractor(programs, analyze=analyzer, load=load, visual_scan=visual)
+    model = infer_model(llm_model())  # fails now, naming the provider's key variable, if it is not set
+    return Extractor(programs, analyze=LlmAnalyzer(model), load=load, visual_scan=partial(read_document, model=model))
 
 
 def model_name() -> str:
-    """The model the Extractor uses (MODEL_NAME, or the provider's default), for analysis_version."""
-    return LlmAnalyzer(**llm_settings()).model
+    """The model the Extractor uses (MODEL, or the default), for analysis_version."""
+    return llm_model()
 
 
 def _knesset_client() -> KnessetClient | None:

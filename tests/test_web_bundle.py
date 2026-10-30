@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-BLOCKED = ("pandas", "numpy", "langchain", "langchain_core", "pdfplumber", "pymupdf4llm", "openai")
+BLOCKED = ("pandas", "numpy", "pydantic_ai", "pdfplumber", "pymupdf4llm", "openai")
 SCRIPT = f"""
 import sys, importlib.abc
 class Block(importlib.abc.MetaPathFinder):

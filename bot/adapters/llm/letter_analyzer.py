@@ -4,7 +4,7 @@ money is for — a draft, then one self-review that may correct it once (at most
 The Extractor depends on a plain callable `analyze(region) -> (coalition, programs, usage)`
 (Cosmic Python ch. 3), so tests pass a lambda instead.
 
-    analyze = LlmAnalyzer(model="gpt-4o", provider="openai", api_key="sk-...")
+    analyze = LlmAnalyzer("google:gemini-3.6-flash")   # any pydantic_ai '<provider>:<model>', or a Model
     coalition, programs, usage = analyze(region)
 """
 from __future__ import annotations
@@ -12,12 +12,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from bot.domain.request_fields import ProgramUses, Use
-
-DEFAULT_MODELS = {
-    "openai": "gpt-4o",
-    "google_genai": "gemini-3.6-flash",
-}
-DEFAULT_MODEL = DEFAULT_MODELS["openai"]
+from common.config import DEFAULT_MODEL
 
 # Increment bot.domain.versions.PROMPT_VERSION whenever these prompt instructions change.
 # The report's reader wants, at a glance, what this request's money is for. Two lessons from real
@@ -110,33 +105,25 @@ class LlmAnalyzer:
     never a second correction. NO fallback: if the model is unavailable the error surfaces, it is
     not masked by a deterministic answer."""
 
-    def __init__(self, *, model=None, provider=None, api_key=None):
-        self.provider = provider
-        self.api_key = api_key
-        self.model = model or DEFAULT_MODELS.get(provider or "openai", DEFAULT_MODEL)
+    def __init__(self, model=None):
+        self.model = model or DEFAULT_MODEL
 
     def __call__(self, region: str) -> tuple[str, list[ProgramUses], dict]:
-        conversation = [("system", SYSTEM_PROMPT), ("user", region)]
-        draft, draft_raw = self._ask(_Analysis, conversation)
-        review, review_raw = self._ask(_Review, conversation + [
-            ("ai", draft.model_dump_json()), ("user", REVIEW_PROMPT)])
+        draft, draft_run = self._ask(_Analysis, region, None)
+        review, review_run = self._ask(_Review, REVIEW_PROMPT, draft_run.all_messages())
         final = draft if review.ok or review.corrected is None else review.corrected
-        usage = self._usage(draft_raw, review_raw)
+        usage = self._usage(draft_run, review_run)
         usage |= {"review_ok": review.ok, "review_problems": review.problems, "corrected": final is not draft}
         return self._coalition(final.coalition_funds), self._programs(final), usage
 
-    def _ask(self, schema: type[BaseModel], messages: list) -> tuple[BaseModel, object]:
-        """One structured-output model call: (the parsed answer, the raw AIMessage)."""
-        from langchain.chat_models import init_chat_model
+    def _ask(self, schema: type[BaseModel], prompt: str, history: list | None) -> tuple[BaseModel, object]:
+        """One structured-output model call: (the parsed answer, the run result, for its messages and usage)."""
+        from pydantic_ai import Agent
 
-        params: dict = {"temperature": 0, "max_retries": 3}
-        if self.api_key:
-            params["api_key"] = self.api_key
-        if self.provider:
-            params["model_provider"] = self.provider
-        llm = init_chat_model(self.model, **params).with_structured_output(schema, include_raw=True)
-        result = llm.invoke(messages)
-        return result["parsed"], result.get("raw")
+        agent = Agent(self.model, output_type=schema, instructions=SYSTEM_PROMPT,
+                      model_settings={"temperature": 0, "max_retries": 3})
+        result = agent.run_sync(prompt, message_history=history)
+        return result.output, result
 
     @staticmethod
     def _coalition(answer: str | None) -> str:
@@ -148,11 +135,11 @@ class LlmAnalyzer:
                             uses=[Use(text=u.text.strip(), coalition=u.coalition) for u in p.uses if u.text.strip()])
                 for p in analysis.programs]
 
-    def _usage(self, *raws) -> dict:
-        """The model and its token counts over all calls, from the raw AIMessages (logged by the job,
-        not printed). `cached_tokens` are input tokens served from the provider's prompt cache."""
-        metas = [getattr(raw, "usage_metadata", None) or {} for raw in raws]
-        return {"model": self.model, "calls": len(raws),
-                "input_tokens": sum(m.get("input_tokens", 0) for m in metas),
-                "output_tokens": sum(m.get("output_tokens", 0) for m in metas),
-                "cached_tokens": sum((m.get("input_token_details") or {}).get("cache_read", 0) for m in metas)}
+    def _usage(self, *runs) -> dict:
+        """The model and its token counts over all calls (logged by the job, not printed).
+        `cached_tokens` are input tokens served from the provider's prompt cache."""
+        usages = [run.usage for run in runs]
+        return {"model": getattr(self.model, "model_name", self.model), "calls": len(runs),
+                "input_tokens": sum(u.input_tokens for u in usages),
+                "output_tokens": sum(u.output_tokens for u in usages),
+                "cached_tokens": sum(u.cache_read_tokens for u in usages)}
