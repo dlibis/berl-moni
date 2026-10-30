@@ -18,7 +18,6 @@ from bot.tests.fixtures.extractions import (
     complete_extraction,
     complete_irrelevant_extraction,
     exact_bypass_extraction,
-    irrelevant_extraction,
 )
 from bot.service_layer.analysis import request_analysis
 from bot.service_layer.unit_of_work import UnitOfWork
