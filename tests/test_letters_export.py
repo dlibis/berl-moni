@@ -73,3 +73,19 @@ def test_export_xlsx_rows_and_hyperlink(client, db):
     link_cell = ws.cell(row=2, column=len(headers))
     assert link_cell.hyperlink is not None
     assert link_cell.hyperlink.target.endswith(".pdf")
+
+
+@pytest.mark.parametrize("status,label", [
+    ("discovered", "ממתין לניתוח"),
+    ("queued", "בתור לניתוח"),
+    ("analyzing", "הניתוח מתבצע"),
+    ("analyzed", "נותח"),
+    ("failed", "הניתוח נכשל"),
+])
+def test_export_analysis_status_in_hebrew(client, db, status, label):
+    insert(db, 1, status=status)
+    response = client.get("/api/v1/letters/export")
+    assert response.status_code == 200
+    ws = load_workbook(BytesIO(response.data)).active
+    headers = [cell.value for cell in ws[1]]
+    assert ws.cell(row=2, column=headers.index("סטטוס ניתוח") + 1).value == label

@@ -10,14 +10,20 @@ from web.views.letters import all_letter_rows
 
 export_bp = Blueprint("export", __name__, url_prefix="/api/v1")
 
+ANALYSIS_STATUS_LABELS = {
+    "discovered": "ממתין לניתוח",
+    "queued": "בתור לניתוח",
+    "analyzing": "הניתוח מתבצע",
+    "analyzed": "נותח",
+    "failed": "הניתוח נכשל",
+}
+
 HEADERS = [
     ("letter_date", "תאריך"),
     ("request_numbers", "מספר בקשה"),
     ("ministry", "משרד"),
     ("analysis_status", "סטטוס ניתוח"),
     ("relevant", "רלוונטי"),
-    ("complete", "הושלם"),
-    ("needs_analysis", "דורש ניתוח"),
     ("requires_review", "דורש עיון"),
     ("passed", "עברה"),
     ("last_sent_at", "נשלח"),
@@ -41,7 +47,9 @@ def export_letters():
         line = []
         for key, _ in HEADERS:
             val = item.get(key)
-            if key == "request_numbers" and isinstance(val, list):
+            if key == "analysis_status":
+                val = ANALYSIS_STATUS_LABELS.get(val, val)
+            elif key == "request_numbers" and isinstance(val, list):
                 val = ", ".join(val)
             elif isinstance(val, bool):
                 val = "כן" if val else "לא"
