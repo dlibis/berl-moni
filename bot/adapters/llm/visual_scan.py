@@ -1,9 +1,10 @@
-"""Read scanned pages visually with the configured multimodal model."""
+"""Read an entire scanned PDF in one call to the configured multimodal model."""
 from __future__ import annotations
 
 import base64
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -32,6 +33,7 @@ class History(BaseModel):
 
 
 class ScanPage(BaseModel):
+    page_number: int = Field(ge=1, description="Physical PDF page number, starting at 1")
     text: str = Field(description="Transcription of the page's narrative and headings, in reading order")
     budget_table_present: bool
     rows: list[BudgetRow]
@@ -39,7 +41,13 @@ class ScanPage(BaseModel):
     history: list[History]
 
 
-PROMPT = """Read this scanned Hebrew page visually. Transcribe narrative and headings in text in
+class ScanDocument(BaseModel):
+    pages: list[ScanPage]
+
+
+PROMPT = """Read every page of this scanned Hebrew PDF visually, in physical page order.
+Return one pages entry per PDF page, including blank pages, with its page_number.
+For each page, transcribe narrative and headings in text in
 reading order. Identify budget tables and list every 5 or 6 digit program-level row in source
 order, including repeated codes. Record the printed code, name and הוצאה before, change and after.
 Preserve leading zeros and negatives. For an unreadable value use null. For a visibly blank half
@@ -49,25 +57,11 @@ is present, transcribe all its column headers and rows as history, preserving so
 Report whether budget and history tables are present even if they cannot be read."""
 
 
-def read_page(image: bytes, *, model: str, provider: str, api_key: str, client=None) -> ScanPage:
-    if not api_key:
-        raise ExtractionError("A model API key is required for visual scan extraction")
-    if client is None:
-        from langchain.chat_models import init_chat_model
-        client = init_chat_model(model, model_provider=provider, api_key=api_key,
-                                 temperature=0, max_retries=0)
-    encoded = base64.b64encode(image).decode("ascii")
-    from langchain_core.messages import HumanMessage
-    result = client.with_structured_output(ScanPage).invoke([HumanMessage(content=[
-        {"type": "text", "text": PROMPT},
-        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
-    ])])
-    try:
-        page = ScanPage.model_validate(result)
-    except (ValueError, TypeError) as error:
-        raise ExtractionError("Visual model returned an invalid scan page") from error
+def _validate_page(page: ScanPage) -> None:
     if not page.budget_table_present and page.rows:
         raise ExtractionError("Visual model returned rows without a budget table")
+    if page.budget_table_present and not page.rows:
+        raise ExtractionError("Visual model could not read a detected budget table")
     if page.history_present != bool(page.history):
         raise ExtractionError("Visual model could not read a detected history table")
     for history in page.history:
@@ -89,7 +83,6 @@ def read_page(image: bytes, *, model: str, provider: str, api_key: str, client=N
             raise ExtractionError(f"Unreadable or blank expenditure value: {row.code}")
         if abs(values.before + values.change - values.after) >= 0.01:
             raise ExtractionError(f"Expenditure arithmetic mismatch: {row.code}")
-    return page
 
 
 @dataclass
@@ -99,21 +92,42 @@ class VisualDocument:
     history: list[tuple[str, Table]]
 
 
-def read_document(path: str, *, model: str, provider: str, api_key: str) -> VisualDocument:
+def read_document(path: str, *, model: str, provider: str, api_key: str, client=None) -> VisualDocument:
     import pymupdf
-    pages, rows, history = [], [], []
+    from langchain_core.messages import HumanMessage
+
+    if not api_key:
+        raise ExtractionError("A model API key is required for visual scan extraction")
     with pymupdf.open(path) as pdf:
-        for index, page in enumerate(pdf):
-            try:
-                result = read_page(page.get_pixmap(dpi=180).tobytes("png"), model=model,
-                                   provider=provider, api_key=api_key)
-            except ExtractionError as error:
-                raise ExtractionError(f"Page {index + 1}: {error}") from error
-            pages.append(result.text)
-            rows.extend((r.code.zfill(6), r.name.strip(), r.expenditure.before, r.expenditure.after)
-                        for r in result.rows)
-            history.extend((h.label or "היסטוריה תקציבית של הפנייה", Table(tuple(h.columns),
-                           tuple(tuple(row) for row in h.rows))) for h in result.history)
+        page_count = len(pdf)
+    if not page_count:
+        raise ExtractionError("Scanned document has no pages")
+    if client is None:
+        from langchain.chat_models import init_chat_model
+        client = init_chat_model(model, model_provider=provider, api_key=api_key, max_retries=0)
+    encoded = base64.b64encode(Path(path).read_bytes()).decode("ascii")
+    result = client.with_structured_output(ScanDocument).invoke([HumanMessage(content=[
+        {"type": "text", "text": f"{PROMPT}\nThe PDF has {page_count} pages; return all {page_count}."},
+        {"type": "file", "source_type": "base64", "mime_type": "application/pdf",
+         "data": encoded, "filename": "letter.pdf"},
+    ])])
+    try:
+        document = ScanDocument.model_validate(result)
+    except (ValueError, TypeError) as error:
+        raise ExtractionError("Visual model returned an invalid scan document") from error
+    if [page.page_number for page in document.pages] != list(range(1, page_count + 1)):
+        raise ExtractionError("Visual model omitted, duplicated, or reordered PDF pages")
+    pages, rows, history = [], [], []
+    for page in document.pages:
+        try:
+            _validate_page(page)
+        except ExtractionError as error:
+            raise ExtractionError(f"Page {page.page_number}: {error}") from error
+        pages.append(page.text)
+        rows.extend((r.code.zfill(6), r.name.strip(), r.expenditure.before, r.expenditure.after)
+                    for r in page.rows)
+        history.extend((h.label or "היסטוריה תקציבית של הפנייה", Table(tuple(h.columns),
+                       tuple(tuple(row) for row in h.rows))) for h in page.history)
     if not rows:
         raise ExtractionError("No budget program rows found in scanned document")
     return VisualDocument("\n".join(pages), Table(("number", "name", "הוצאה from", "הוצאה to"),
