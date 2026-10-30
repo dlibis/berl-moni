@@ -113,7 +113,7 @@ def db(test_db_url, stubs, monkeypatch, tmp_path):
     with connect(test_db_url) as conn:
         conn.execute("TRUNCATE letters, scans, email_log, send_runs, mailing_list, programs RESTART IDENTITY CASCADE")
         conn.execute("INSERT INTO programs (code, name) VALUES (%s, 'p')", (PROGRAM,))
-        conn.execute("DELETE FROM settings WHERE key IN ('fetch_every_hours', 'last_feed_refresh_at')")
+        conn.execute("DELETE FROM settings WHERE key IN ('fetch_every_hours', 'fetch_schedule', 'last_feed_refresh_at')")
         for key, value in dict(schedule=EVERY_DAY, from_address=FROM, reply_to_address=REPLY, resend_daily_limit=100,
                                resend_monthly_limit=3000, resend_reserve=5,
                                auto_since="2000-01-01T00:00:00+00:00").items():
@@ -161,10 +161,14 @@ def test_not_due_writes_no_scan(db, stubs):
     assert rows(db, "SELECT * FROM scans") == [] and stubs.scanned == []
 
 
-def test_fetch_only_analyzes_without_sending(db, stubs):
+@pytest.mark.parametrize("custom", [False, True])
+def test_fetch_only_analyzes_without_sending(db, stubs, custom):
     with connect(db) as conn:
         set_setting(conn, "schedule", [])
         set_setting(conn, "fetch_every_hours", 1)
+        if custom:
+            set_setting(conn, "fetch_schedule", {"days": ["sun", "mon", "tue", "wed", "thu", "fri", "sat"],
+                                                 "mode": "specific", "time": "00:00"})
         conn.execute("DELETE FROM settings WHERE key = 'last_feed_refresh_at'")
     stubs.urls = [A]
     assert run(stubs) == 0

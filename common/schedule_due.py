@@ -65,6 +65,54 @@ def fetch_due(now_utc: datetime, every_hours: int | None, last_at: str | None) -
     return now_utc - last >= timedelta(hours=every_hours)
 
 
+def legacy_fetch_schedule(hours):
+    if isinstance(hours, bool) or hours not in FETCH_HOURS:
+        return None
+    return {"days": DAY_KEYS.copy(), "mode": "interval", "interval_hours": hours}
+
+
+def valid_fetch_schedule(config):
+    if config is None:
+        return True
+    if not isinstance(config, dict):
+        return False
+    days = config.get("days")
+    if not isinstance(days, list) or not days or any(not isinstance(d, str) or d not in DAY_KEYS for d in days):
+        return False
+    if len(set(days)) != len(days):
+        return False
+    if config.get("mode") == "interval":
+        hours = config.get("interval_hours")
+        return (set(config) == {"days", "mode", "interval_hours"} and type(hours) is int and 1 <= hours <= 24)
+    if config.get("mode") == "specific":
+        value = config.get("time")
+        return (set(config) == {"days", "mode", "time"} and isinstance(value, str)
+                and value in [f"{h:02}:00" for h in range(24)])
+    return False
+
+
+def read_fetch_schedule(setting):
+    """A stored null means off; only an absent key falls back to the legacy cadence."""
+    missing = object()
+    config = setting("fetch_schedule", missing)
+    return legacy_fetch_schedule(setting("fetch_every_hours")) if config is missing else config
+
+
+def scheduled_fetch_due(now, config, last_at):
+    if config is None or not valid_fetch_schedule(config):
+        return False
+    local = now.astimezone(ISRAEL)
+    if DAY_KEYS[local.weekday()] not in config["days"]:
+        return False
+    last = datetime.fromisoformat(last_at) if last_at else None
+    if last is not None and last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    if config["mode"] == "interval":
+        return last is None or now - last >= timedelta(hours=config["interval_hours"])
+    slot = datetime.combine(local.date(), time.fromisoformat(config["time"]), ISRAEL)
+    return local >= slot and (last is None or last < slot)
+
+
 def resume_requested(conn) -> bool:
     """True if a person pressed resume on a run that is still `sending`."""
     return conn.execute("SELECT 1 FROM send_runs WHERE status = 'sending' AND resume_requested_at IS NOT NULL").fetchone() is not None
@@ -84,12 +132,13 @@ def eligibility(conn, now: datetime) -> tuple[bool, bool]:
     schedule = row["value"] if row else []
     always_row = conn.execute("SELECT value FROM settings WHERE key = 'always_send'").fetchone()
     always = bool(always_row["value"]) if always_row else False
-    hours_row = conn.execute("SELECT value FROM settings WHERE key = 'fetch_every_hours'").fetchone()
-    every_hours = hours_row["value"] if hours_row else None
+    from common.db import get_setting
+
+    config = read_fetch_schedule(lambda key, default=None: get_setting(conn, key, default))
     last_row = conn.execute("SELECT value FROM settings WHERE key = 'last_feed_refresh_at'").fetchone()
     last_at = last_row["value"] if last_row else None
     due = (due_day(now, schedule, conn, always) is not None
            or due_always_send(now, always, conn) is not None or resume_requested(conn)
-           or fetch_due(now, every_hours, last_at))
+           or scheduled_fetch_due(now, config, last_at))
     return due, has_queued(conn)
 

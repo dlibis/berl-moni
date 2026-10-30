@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from common.db import connect, get_setting, list_emails, set_setting
 from common.limits import projected_monthly_emails
-from common.schedule_due import DAY_KEYS, FETCH_HOURS, schedule_configured
+from common.schedule_due import DAY_KEYS, FETCH_HOURS, schedule_configured, legacy_fetch_schedule, read_fetch_schedule, valid_fetch_schedule
 from web.auth import require_session
 
 schedule_bp = Blueprint("schedule", __name__, url_prefix="/api/v1/schedule")
@@ -36,6 +36,14 @@ def _valid(schedule):
     return all(ranges[i - 1][1] < ranges[i][0] for i in range(1, len(ranges)))
 
 
+def _legacy_hours(config):
+    if config and config["mode"] == "interval" and set(config["days"]) == set(DAY_KEYS):
+        hours = config["interval_hours"]
+        if hours in FETCH_HOURS:
+            return hours
+    return None
+
+
 def _month(offset=0):
     today = date.today()
     total = today.year * 12 + today.month - 1 + offset
@@ -47,12 +55,13 @@ def _month(offset=0):
 def get_schedule():
     with connect() as conn:
         schedule = get_setting(conn, "schedule", [])
-        fetch_every_hours = get_setting(conn, "fetch_every_hours")
+        fetch_schedule = read_fetch_schedule(lambda key, default=None: get_setting(conn, key, default))
+        fetch_every_hours = _legacy_hours(fetch_schedule)
         always_send = bool(get_setting(conn, "always_send", False))
         count = len(list_emails(conn))
         limit = int(get_setting(conn, "resend_monthly_limit", 3000))
     months = (_month(), _month(1))
-    return jsonify({"schedule": schedule, "fetch_every_hours": fetch_every_hours, "always_send": always_send,
+    return jsonify({"schedule": schedule, "fetch_schedule": fetch_schedule, "fetch_every_hours": fetch_every_hours, "always_send": always_send,
                     "projected_monthly_emails": {m.isoformat(): projected_monthly_emails(count, schedule, m) for m in months},
                     "monthly_limit": limit})
 
@@ -70,19 +79,24 @@ def set_schedule():
         hours = data["fetch_every_hours"]
         if hours is not None and (isinstance(hours, bool) or hours not in FETCH_HOURS):
             return jsonify({"error": "invalid schedule"}), 400
+    if "fetch_schedule" in data and not valid_fetch_schedule(data["fetch_schedule"]):
+        return jsonify({"error": "invalid fetch_schedule"}), 400
     always_send = data.get("always_send")
     if always_send is not None and not isinstance(always_send, bool):
         return jsonify({"error": "invalid always_send"}), 400
     with connect() as conn:
         was_on = schedule_configured(get_setting(conn, "schedule", []))
         set_setting(conn, "schedule", schedule)
-        if "fetch_every_hours" in data:
-            set_setting(conn, "fetch_every_hours", data["fetch_every_hours"])
+        if "fetch_schedule" in data or "fetch_every_hours" in data:
+            config = data["fetch_schedule"] if "fetch_schedule" in data else legacy_fetch_schedule(data["fetch_every_hours"])
+            set_setting(conn, "fetch_schedule", config)
+            set_setting(conn, "fetch_every_hours", _legacy_hours(config))
         if always_send is not None:
             set_setting(conn, "always_send", always_send)
         if schedule_configured(schedule) != was_on:
             db_now = conn.execute("SELECT now() AS now").fetchone()["now"]  # the clock first_seen_at uses
             set_setting(conn, "auto_since", db_now.isoformat() if not was_on else None)
         saved_always = bool(get_setting(conn, "always_send", False))
-        saved_hours = get_setting(conn, "fetch_every_hours")
-    return jsonify({"schedule": schedule, "fetch_every_hours": saved_hours, "always_send": saved_always})
+        saved_fetch = read_fetch_schedule(lambda key, default=None: get_setting(conn, key, default))
+        saved_hours = _legacy_hours(saved_fetch)
+    return jsonify({"schedule": schedule, "fetch_schedule": saved_fetch, "fetch_every_hours": saved_hours, "always_send": saved_always})

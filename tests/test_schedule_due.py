@@ -101,7 +101,7 @@ def test_due_when_only_fetch_cadence_is_due(test_db_url):
     from common.schedule_due import eligibility
 
     with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
-        conn.execute("DELETE FROM settings WHERE key IN ('schedule', 'always_send', 'fetch_every_hours', 'last_feed_refresh_at')")
+        conn.execute("DELETE FROM settings WHERE key IN ('schedule', 'always_send', 'fetch_every_hours', 'fetch_schedule', 'last_feed_refresh_at')")
         set_setting(conn, "schedule", [])
         set_setting(conn, "always_send", False)
         set_setting(conn, "fetch_every_hours", 1)

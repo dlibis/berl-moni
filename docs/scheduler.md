@@ -90,3 +90,21 @@ the project's other function and database usage still counts toward its allowanc
   self-check passed. No real email or model call was used for testing.
 - The next genuinely due worker run remains an operational follow-up; idle
   verification does not prove delivery of scheduled email or model analysis.
+
+## Feed refresh schedule
+
+The schedule page offers selected weekdays and either one shared whole-hour time
+or a 1–24 hour interval. All weekday/time choices use Asia/Jerusalem. The existing
+hourly tick remains unchanged, so execution can be delayed until the next check.
+
+The API stores nullable `fetch_schedule` in settings: null is off; otherwise use
+`{days: ["sun", "thu"], mode: "specific", time: "09:00"}` or
+`{days: ["sun", "thu"], mode: "interval", interval_hours: 2}`.
+An absent setting falls back to the legacy `fetch_every_hours` cadence on all days.
+Legacy writes are normalized; omitted refresh fields preserve the saved schedule.
+
+Intervals use the last successful feed refresh and pause on excluded days.
+Specific times remain due later that same local day until a refresh succeeds at
+or after the chosen time; missed previous days are not replayed. Manual refresh
+and the refresh before email delivery still work independently and update the
+same successful-refresh timestamp. Refresh failures leave that timestamp unchanged.

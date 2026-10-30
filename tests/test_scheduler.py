@@ -23,7 +23,7 @@ def connection(test_db_url):
     with connect() as conn:
         conn.execute("TRUNCATE send_runs RESTART IDENTITY CASCADE")
         conn.execute("TRUNCATE letters, scans")
-        conn.execute("DELETE FROM settings WHERE key IN ('schedule', 'always_send', 'fetch_every_hours', "
+        conn.execute("DELETE FROM settings WHERE key IN ('schedule', 'always_send', 'fetch_every_hours', 'fetch_schedule', "
                      "'last_feed_refresh_at', 'scheduler_last_dispatched_hour')")
     return connect
 
@@ -190,3 +190,15 @@ def test_resume_commits_before_dispatch_and_keeps_request_on_failure(connection,
     assert client.post(f"/api/v1/send-runs/{run_id}/resume").json == {"status": "ok"}
     assert client.post(f"/api/v1/send-runs/{run_id}/resume").status_code == 409
     assert len(calls) == 1
+
+
+def test_custom_refresh_eligibility_matches_success_timestamp(connection):
+    now = datetime(2026, 10, 29, 12, tzinfo=ISRAEL)
+    with connection() as conn:
+        set_setting(conn, "fetch_schedule", {"days": ["thu"], "mode": "specific", "time": "09:00"})
+        assert eligibility(conn, now) == (True, False)
+        set_setting(conn, "last_feed_refresh_at", now.isoformat())
+        assert eligibility(conn, now) == (False, False)
+        set_setting(conn, "last_feed_refresh_at", None)
+        set_setting(conn, "fetch_schedule", {"days": ["sun"], "mode": "interval", "interval_hours": 2})
+        assert eligibility(conn, now) == (False, False)

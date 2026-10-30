@@ -29,7 +29,7 @@ from bot.domain.feed import Approval, FeedLetter
 from bot.domain.slug import letter_slug
 from bot.domain.statuses import LetterReason, ScanReason, ScanStatus
 from common.limits import list_cap
-from common.schedule_due import ISRAEL, fetch_due
+from common.schedule_due import ISRAEL, read_fetch_schedule, scheduled_fetch_due
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ def resume_run(uow, ports: Ports, run: dict, today) -> int:
 def fetch_if_due(uow, ports: Ports, now: datetime) -> int:
     """Pull and analyze the feed when the fetch schedule is due; never send mail."""
     last = uow.setting("last_feed_refresh_at")
-    if not fetch_due(now, uow.setting("fetch_every_hours"), last):
+    if not scheduled_fetch_due(now, read_fetch_schedule(uow.setting), last):
         logger.info("feed fetch not due (last fetch %s): nothing else to do", last)
         return 0
     from bot.service_layer.analysis import drain_queue, refresh_feed

@@ -1,3 +1,6 @@
+export type FetchSchedule = {
+  days: string[];
+} & ({ mode: "specific"; time: string } | { mode: "interval"; interval_hours: number });
 export type Day = { enabled: boolean; time: string };
 export type Range = {
   from: string;
@@ -7,6 +10,7 @@ export type Range = {
 };
 export type ScheduleData = {
   schedule: Range[];
+  fetch_schedule?: FetchSchedule | null;
   fetch_every_hours?: 1 | 6 | 24 | null;
   always_send: boolean;
   projected_monthly_emails: Record<string, number>;

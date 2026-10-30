@@ -15,7 +15,7 @@ EVERY_DAY_AT_10 = [{**EVERY_DAY[0], "days": {k: {**v, "time": "10:00"} for k, v 
 @pytest.fixture
 def conn(test_db_url):
     with psycopg.connect(test_db_url, row_factory=dict_row, autocommit=True) as conn:
-        conn.execute("DELETE FROM settings WHERE key IN ('schedule', 'auto_since', 'fetch_every_hours')")
+        conn.execute("DELETE FROM settings WHERE key IN ('schedule', 'auto_since', 'fetch_every_hours', 'fetch_schedule')")
         yield conn
 
 
@@ -80,3 +80,24 @@ def test_editing_a_configured_schedule_keeps_auto_since(post_schedule, conn):
     first = get_setting(conn, "auto_since")
     post_schedule(EVERY_DAY_AT_10)
     assert get_setting(conn, "auto_since") == first
+
+
+def test_fetch_schedule_round_trip_and_validation(post_schedule, conn):
+    # Use the same authenticated Flask configuration as the fixture.
+    app = Flask(__name__)
+    app.register_blueprint(schedule_bp)
+    client = app.test_client()
+    config = {"days": ["sun", "thu"], "mode": "specific", "time": "09:00"}
+    response = client.post("/api/v1/schedule", json={"schedule": [], "fetch_schedule": config})
+    assert response.status_code == 200
+    assert response.json["fetch_schedule"] == config
+    assert client.get("/api/v1/schedule").json["fetch_schedule"] == config
+    post_schedule([])
+    assert get_setting(conn, "fetch_schedule") == config
+    bad = {**config, "days": []}
+    assert client.post("/api/v1/schedule", json={"schedule": [], "fetch_schedule": bad}).status_code == 400
+    assert get_setting(conn, "fetch_schedule") == config
+    assert client.post("/api/v1/schedule", json={"schedule": [], "fetch_schedule": None}).status_code == 200
+    assert client.get("/api/v1/schedule").json["fetch_schedule"] is None
+    assert client.post("/api/v1/schedule", json={"schedule": [], "fetch_every_hours": 6}).status_code == 200
+    assert client.get("/api/v1/schedule").json["fetch_schedule"]["interval_hours"] == 6
