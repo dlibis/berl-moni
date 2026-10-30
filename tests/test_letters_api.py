@@ -291,3 +291,33 @@ def test_retry_route_is_gone(client):
 
 def test_status_has_no_failed_letters(client):
     assert "failed_letters" not in client.get("/api/v1/status").get_json()
+
+
+def test_manual_refresh_updates_passage_by_numbers(client, db, monkeypatch):
+    from unittest.mock import Mock
+    from bot.domain.feed import Approval, FeedLetter
+    from bot.adapters.postgres.letters import LettersRepository
+
+    numbers = ('43-206,17-211,51-215,13-219,54-239',)
+    with db() as conn:
+        repo = LettersRepository(conn)
+        repo.upsert_feed([FeedLetter('old-pdf-url', date(2026, 10, 1), 'ministry', numbers, ())], False)
+        slug = conn.execute("SELECT slug FROM letters WHERE letter_url = 'old-pdf-url'").fetchone()['slug']
+    approvals = Mock(return_value=[Approval(('54-239,13-219,51-215,17-211,43-206',), date(2026, 10, 21))])
+    monkeypatch.setattr('web.bootstrap.ports', lambda: Ports(
+        feed=lambda: [], approvals=approvals, extractor=None, render=None, send_email=None, save_copy=None))
+
+    assert client.get(f'/api/v1/letters/{slug}').get_json()['passed'] is False
+    response = client.post('/api/v1/letters/refresh', json={}, headers=ORIGIN)
+    assert response.status_code == 200
+    approvals.assert_called_once()
+    letter = client.get(f'/api/v1/letters/{slug}').get_json()
+    assert letter['passed'] is True
+    assert letter['passed_date'] == '2026-10-21'
+    assert letter['passage_detected_at'] is not None
+    assert letter['letter_url'] == 'old-pdf-url'
+
+    assert client.post('/api/v1/letters/refresh', json={}, headers=ORIGIN).status_code == 200
+    repeated = client.get(f'/api/v1/letters/{slug}').get_json()
+    assert repeated['passage_detected_at'] == letter['passage_detected_at']
+    assert repeated['passed_date'] == letter['passed_date']

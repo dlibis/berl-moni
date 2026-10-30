@@ -29,7 +29,7 @@ export function LetterRow({ letter }: { letter: LetterItem }) {
         <LetterRelevantBadge letter={letter} />
       </TableCell>
       <TableCell>
-        <LetterPassedBadge passed={letter.passed} />
+        <LetterPassedBadge letter={letter} />
       </TableCell>
       <TableCell className="w-16 px-1 text-center">
         <LetterReportCell letter={letter} />

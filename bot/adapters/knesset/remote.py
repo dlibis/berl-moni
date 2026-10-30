@@ -8,7 +8,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
 from bot.domain.errors import FeedUnreachable
-from bot.domain.feed import FeedLetter
+from bot.domain.feed import Approval, FeedLetter
 
 
 class KnessetClient:
@@ -39,3 +39,16 @@ class KnessetClient:
         except (RequestException, ValueError) as error:
             detail = f" (HTTP {response.status_code})" if response is not None else ""
             raise FeedUnreachable(f"Israeli fetch service: {type(error).__name__}{detail}") from error
+
+
+    def fetch_approvals(self) -> list[Approval]:
+        # A complete historical scan can exceed /feed's timeout; do not retry this long request.
+        try:
+            with Session() as session:
+                response = session.get(f"{self.url}/approvals",
+                                       headers={"Authorization": f"Bearer {self.token}"},
+                                       timeout=(5, 200), allow_redirects=False)
+            response.raise_for_status()
+            return TypeAdapter(list[Approval]).validate_python(response.json())
+        except (RequestException, ValueError) as error:
+            raise FeedUnreachable(f"Israeli approvals service: {type(error).__name__}") from error

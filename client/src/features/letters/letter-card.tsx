@@ -20,7 +20,7 @@ export function LetterCard({ letter }: { letter: LetterItem }) {
         <div className="flex flex-wrap items-center justify-end gap-1">
           <LetterRelevantBadge letter={letter} />
           <LetterReportCell letter={letter} />
-          <LetterPassedBadge passed={letter.passed} />
+          <LetterPassedBadge letter={letter} />
         </div>
       </div>
       <p className="font-mono text-sm">

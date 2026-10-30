@@ -1,3 +1,4 @@
+import { day } from "../../utils/date-time";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CircleAlert, CircleX, Eye, LoaderCircle } from "lucide-react";
@@ -106,6 +107,18 @@ export function RequiresReviewIcon({ show }: { show: boolean }) {
   );
 }
 
-export function LetterPassedBadge({ passed }: { passed: boolean }) {
-  return <FlagBadge on={passed} yes="עברה" no="לא עברה" />;
+export function LetterPassedBadge({ letter }: { letter: LetterItem }) {
+  const badge = <FlagBadge on={letter.passed} yes="עברה" no="לא עברה" />;
+  if (!letter.passed) return badge;
+  const label = letter.passed_date
+    ? `תאריך אישור: ${day(letter.passed_date)}`
+    : letter.passage_detected_at
+      ? `תאריך האישור אינו זמין; זוהה בתאריך ${day(letter.passage_detected_at)}`
+      : "תאריך האישור אינו ידוע";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild><span tabIndex={0} aria-label={`עברה. ${label}`}>{badge}</span></TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
 }

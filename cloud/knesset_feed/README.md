@@ -5,7 +5,9 @@ This service runs only the public Knesset feed and source-PDF requests in Cloud 
 GitHub retains the schedules, analysis, and send jobs; Vercel retains the app.
 
 `GET /feed` uses the existing feed adapter and returns serialized `FeedLetter`
-objects. `GET /pdf?url=...` accepts only HTTPS files under
+objects. `GET /approvals` returns all approved request-number sets with nullable
+`approved_date` values, without fetching PDFs. It uses bounded parallel pagination
+and fails if the page counts are inconsistent. `GET /pdf?url=...` accepts only HTTPS files under
 `fs.knesset.gov.il/globaldocs/FINANCE/`, follows no redirects, rejects non-PDF
 responses, and limits each PDF to 64 MiB. Both endpoints require
 `Authorization: Bearer <KNESSET_FETCH_TOKEN>` and return `Cache-Control: no-store`.
@@ -62,3 +64,15 @@ The PDF cache, original source URL, validation, and retry behavior are retained.
 Verify a full feed and a PDF from the deployed service before updating either
 caller. Do not dispatch a send workflow just to test connectivity: it can send
 real mail and incur model charges.
+
+## Passage tracking rollout
+
+Apply migration `008_letter_passage.sql`, deploy this service with `/approvals`,
+then deploy the web/worker callers. Until the endpoint is available, the new
+callers deliberately fail the refresh instead of silently skipping passage checks.
+The approvals client uses one 200-second read timeout without retries; keep the
+service and web function limits at 300 seconds. Existing pending-feed counts and
+analysis scheduling are unchanged. Approval matching uses the complete normalized
+request-number set, never the PDF URL. Conflicting approval dates are logged and
+skipped. A successful refresh may mark an existing tracked letter passed, but
+never automatically clears that flag or reanalyzes its report.

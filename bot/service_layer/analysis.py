@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Callable, Literal, NamedTuple
 
-from bot.domain.feed import FeedLetter
+from bot.domain.feed import Approval, FeedLetter
 from bot.domain.slug import letter_slug
 from bot.domain.versions import analysis_version
 from bot.service_layer.services import LetterExtractor, log_failure
@@ -25,10 +25,14 @@ class AnalysisRequest(NamedTuple):
     dispatched: bool
 
 
-def refresh_feed(uow, feed: Callable[[], list[FeedLetter]], auto: bool = False) -> RefreshResult:
+def refresh_feed(uow, feed: Callable[[], list[FeedLetter]], auto: bool = False,
+                 approvals: Callable[[], list[Approval]] | None = None) -> RefreshResult:
     """Upsert the feed's letters; new ones are `queued` when auto, else `discovered`. FeedUnreachable propagates."""
     letters = feed()
+    approved = approvals() if approvals is not None else None
     new = uow.letters.upsert_feed(letters, auto)
+    if approved is not None:
+        uow.letters.record_approvals(approved)
     uow.set_setting("last_feed_refresh_at", datetime.now(timezone.utc).isoformat())
     uow.commit()
     return RefreshResult(new, len(letters) - new)

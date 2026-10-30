@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 import requests
 from flask import Flask, Response, jsonify, request
 
-from bot.adapters.knesset.feed import fetch_letters
+from bot.adapters.knesset.feed import fetch_approvals, fetch_letters
 from bot.domain.errors import FeedUnreachable
 
 app = Flask(__name__)
@@ -58,3 +58,17 @@ def pdf():
         app.logger.warning("Knesset PDF failed: %s", type(error).__name__)
         return jsonify(error="pdf_unreachable"), 502
     return Response(bytes(data), mimetype="application/pdf", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/approvals")
+def approvals():
+    try:
+        rows = fetch_approvals()
+    except FeedUnreachable as error:
+        app.logger.warning("Knesset approvals failed: %s", error)
+        return jsonify(error="feed_unreachable"), 502
+    response = jsonify([{"request_numbers": row.request_numbers,
+                         "approved_date": row.approved_date.isoformat() if row.approved_date else None}
+                        for row in rows])
+    response.headers["Cache-Control"] = "no-store"
+    return response

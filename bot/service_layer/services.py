@@ -25,7 +25,7 @@ import requests
 from bot.domain import send_plan as plan
 from bot.domain.errors import DownloadError, ExtractionError, FeedUnreachable, NoTextError, ResendError
 from bot.domain.extraction import Extraction
-from bot.domain.feed import FeedLetter
+from bot.domain.feed import Approval, FeedLetter
 from bot.domain.slug import letter_slug
 from bot.domain.statuses import LetterReason, ScanReason, ScanStatus
 from common.limits import list_cap
@@ -70,6 +70,7 @@ class Ports:
     save_copy: Callable[[str, Path], None]                        # letter_pdf.download.save_copy (--no-email)
     now: Callable[[], datetime] = field(default=lambda: datetime.now(timezone.utc))
     model: str = ""                                               # the configured model, for analysis_version
+    approvals: Callable[[], list[Approval]] | None = None
 
 
 class SendRun(TypedDict):
@@ -250,7 +251,7 @@ def fetch_if_due(uow, ports: Ports, now: datetime) -> int:
         return 0
     from bot.service_layer.analysis import drain_queue, refresh_feed
     try:
-        refresh_feed(uow, ports.feed, auto=True)
+        refresh_feed(uow, ports.feed, auto=True, approvals=ports.approvals)
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return 1
@@ -282,7 +283,7 @@ def send_job(uow, ports: Ports) -> int:
         uow.set_setting("auto_since", uow.db_now())
         uow.commit()
     try:
-        refreshed = refresh_feed(uow, ports.feed, auto=True)
+        refreshed = refresh_feed(uow, ports.feed, auto=True, approvals=ports.approvals)
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return finish_scan(uow, day, "failed", "feed_unreachable")

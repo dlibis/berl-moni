@@ -3,6 +3,8 @@
 
 letter_date is the PDF's HTTP Last-Modified (its upload day in Israel): the feed's ApprovedDate stays
 empty until the committee discusses a letter, so it is missing for nearly every pending one."""
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from email.utils import parsedate_to_datetime
 from math import ceil
 from zoneinfo import ZoneInfo
@@ -10,7 +12,7 @@ from zoneinfo import ZoneInfo
 from requests import RequestException, head, post
 
 from bot.domain.errors import FeedUnreachable
-from bot.domain.feed import FeedLetter
+from bot.domain.feed import Approval, FeedLetter
 
 FEED_URL = "https://www.knesset.gov.il/WebSiteApi/knessetapi/CommitteeReports/GetCommitteePortalsBudget"
 PAGE_SIZE = 10
@@ -18,7 +20,7 @@ PAGE_TIMEOUT = 30
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 
 
-def _get_page(page_num):
+def _get_page(page_num, status=2):
     response = None
     try:
         response = post(
@@ -26,7 +28,7 @@ def _get_page(page_num):
             json={
                 "FromDate": None,
                 "ToDate": None,
-                "requestStatus": 2,
+                "requestStatus": status,
                 "PageNumber": page_num,
             },
             timeout=PAGE_TIMEOUT,
@@ -83,3 +85,33 @@ def _letter(url, rows):
         request_numbers=tuple(numbers),
         rows=tuple({k: v for k, v in row.items() if k not in ("Description", "TotalCount")} for row in rows),
     )
+
+
+def fetch_approvals():
+    """Read every approved row without PDF HEAD requests. Fail closed on incomplete pages."""
+    rows = _get_page(1, 1)
+    if not rows:
+        return []
+    total = rows[0].get("TotalCount")
+    if not isinstance(total, int) or total < len(rows):
+        raise FeedUnreachable("approved feed has invalid TotalCount")
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for page in pool.map(lambda n: _get_page(n, 1), range(2, ceil(total / PAGE_SIZE) + 1)):
+            rows.extend(page)
+    if len(rows) != total or any(row.get("TotalCount") != total for row in rows):
+        raise FeedUnreachable("approved feed changed or is incomplete")
+    groups = {}
+    for index, row in enumerate(rows):
+        groups.setdefault(row.get("ReportUrl") or index, []).append(row)
+    approvals = []
+    for group in groups.values():
+        numbers = tuple(row.get("RequestNumberRange") or "" for row in group)
+        dates = set()
+        for row in group:
+            try:
+                approved = date.fromisoformat((row.get("ApprovedDate") or "")[:10])
+            except (ValueError, TypeError):
+                approved = None
+            dates.add(approved)
+        approvals.extend(Approval(numbers, approved) for approved in dates)
+    return approvals

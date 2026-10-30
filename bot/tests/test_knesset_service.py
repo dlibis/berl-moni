@@ -149,3 +149,23 @@ def test_pdf_proxy_bounds_download_size(client, monkeypatch):
     monkeypatch.setattr("cloud.knesset_feed.app.MAX_PDF_BYTES", 1)
     pdf_response(monkeypatch)
     assert client.get("/pdf", query_string={"url": LETTER.url}, headers=HEADERS).status_code == 502
+
+
+def test_approvals_response_round_trip(client, monkeypatch):
+    from bot.domain.feed import Approval
+    approval = Approval(('43-206,17-211',), date(2026, 10, 21))
+    monkeypatch.setattr('cloud.knesset_feed.app.fetch_approvals', lambda: [approval])
+    result = client.get('/approvals', headers=HEADERS)
+    assert result.status_code == 200 and result.headers['Cache-Control'] == 'no-store'
+    response = Mock()
+    response.json.return_value = result.get_json()
+    monkeypatch.setattr('bot.adapters.knesset.remote.Session.get', Mock(return_value=response))
+    assert KnessetClient('https://fetch.example', TOKEN).fetch_approvals() == [approval]
+
+
+def test_approvals_fail_closed(client, monkeypatch):
+    fetch = Mock(side_effect=FeedUnreachable('incomplete'))
+    monkeypatch.setattr('cloud.knesset_feed.app.fetch_approvals', fetch)
+    assert client.get('/approvals').status_code == 401
+    fetch.assert_not_called()
+    assert client.get('/approvals', headers=HEADERS).status_code == 502

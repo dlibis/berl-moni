@@ -4,12 +4,13 @@ analysis (extraction JSON) and a delivery summary. Legacy rows keep their status
 It is also the analysis queue: `analysis_status` is the state, and a worker holds a letter through a
 30-minute lease (`lease_id`); only the lease holder may write the result."""
 import hashlib
+import logging
 from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
 from bot.domain.extraction import PROVENANCE_COALITION_FUNDS, PROVENANCE_EXACT_CLAUSES, relevance_sql
-from bot.domain.feed import FeedLetter
+from bot.domain.feed import FeedLetter, request_key
 
 
 def slug_for(url: str) -> str:
@@ -66,6 +67,25 @@ class LettersRepository:
                  letter.ministry, list(letter.request_numbers), Jsonb(list(letter.rows)))).fetchone()
             inserted += row["inserted"]
         return inserted
+
+    def record_approvals(self, approvals) -> None:
+        dates = {}
+        for approval in approvals:
+            key = request_key(approval.request_numbers)
+            if key:
+                dates.setdefault(key, set()).add(approval.approved_date)
+        for row in self.conn.execute(
+                "SELECT letter_url, request_numbers FROM letters WHERE last_seen_in_feed_at IS NOT NULL").fetchall():
+            key = request_key(row["request_numbers"] or [])
+            matches = dates.get(key, set())
+            if len(matches) > 1:
+                logging.getLogger(__name__).warning("Ambiguous approval dates for request set %s", key)
+            elif matches:
+                approved = next(iter(matches))
+                self.conn.execute(
+                    "UPDATE letters SET passed = true, passed_date = COALESCE(passed_date, %s), "
+                    "passage_detected_at = COALESCE(passage_detected_at, now()) WHERE letter_url = %s",
+                    (approved, row["letter_url"]))
 
     def get(self, slug: str) -> dict | None:
         return self.conn.execute("SELECT * FROM letters WHERE slug = %s", (slug,)).fetchone()

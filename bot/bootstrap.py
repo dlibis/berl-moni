@@ -5,7 +5,7 @@ import logging
 import os
 from functools import partial
 
-from bot.adapters.knesset.feed import fetch_letters
+from bot.adapters.knesset.feed import fetch_approvals, fetch_letters
 from bot.adapters.knesset.remote import KnessetClient
 from bot.adapters.letter_pdf.download import save_copy
 from bot.adapters.letter_pdf.loader import open_letter
@@ -57,4 +57,4 @@ def ports() -> Ports:
     return Ports(feed=client.fetch_letters if client else fetch_letters, extractor=extractor,
                  render=SummaryPdfRenderer().render, send_email=send_email,
                  save_copy=partial(save_copy, request_for=client.pdf_request) if client else save_copy,
-                 model=model_name())
+                 model=model_name(), approvals=client.fetch_approvals if client else fetch_approvals)

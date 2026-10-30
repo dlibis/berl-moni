@@ -18,7 +18,7 @@ COLUMNS = f"""slug, letter_url, letter_date, ministry, coalesce(request_numbers,
     first_seen_at, analysis_status, analyzed_at, {RELEVANT} AS relevant, {COMPLETE} AS complete,
     extraction IS NULL AND summary_pdf IS NOT NULL AS legacy, extraction IS NOT NULL AS has_extraction,
     extraction_version, last_error, last_error_at, last_sent_at, send_count, analysis_requested_by,
-    requires_review, passed"""
+    requires_review, passed, passed_date, passage_detected_at"""
 
 FILTERS = {
     "not_analyzed": "analysis_status IN ('discovered', 'queued', 'analyzing')",

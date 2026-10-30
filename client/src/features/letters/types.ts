@@ -24,6 +24,8 @@ export type LetterItem = {
   outdated: boolean;
   requires_review: boolean;
   passed: boolean;
+  passed_date: string | null;
+  passage_detected_at: string | null;
   legacy: boolean;
   last_error: string | null;
   last_error_at: string | null;

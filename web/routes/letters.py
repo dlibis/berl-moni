@@ -61,7 +61,8 @@ def refresh():
         try:
             auto = (schedule_configured(uow.setting("schedule", []))
                     or uow.setting("fetch_every_hours") in FETCH_HOURS)
-            result = refresh_feed(uow, bootstrap.ports().feed, auto=auto)
+            ports = bootstrap.ports()
+            result = refresh_feed(uow, ports.feed, auto=auto, approvals=ports.approvals)
         except FeedUnreachable as error:
             current_app.logger.warning("feed refresh failed: %s", error)
             return jsonify({"error": "feed_unreachable"}), 502
