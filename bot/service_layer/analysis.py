@@ -7,11 +7,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Callable, Literal, NamedTuple
 
-from bot.domain.errors import ExtractionError
 from bot.domain.feed import FeedLetter
-from bot.domain.slug import letter_slug
 from bot.domain.versions import analysis_version
-from bot.service_layer.services import LetterExtractor, failure_reason
+from bot.service_layer.services import LetterExtractor, log_failure
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +53,7 @@ def request_analysis(uow, slug: str, user: str | None, dispatch: Callable[[], bo
 
 class DrainResult(NamedTuple):
     analyzed: int
-    unexpected: bool  # an error that is a bug, not a letter we can't read: the job must fail
+    failed: bool  # a letter failed (unreadable, model down, or a bug): the job must fail
 
 
 def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], model: str) -> DrainResult:
@@ -64,20 +62,15 @@ def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], mod
     uow.letters.requeue_expired()
     uow.commit()
     letter_extractor = extractor(uow.programs())
-    analyzed, unexpected = 0, False
+    analyzed, failed = 0, False
     while (letter := uow.letters.claim()) is not None:
         uow.commit()
         url, lease = letter["letter_url"], letter["lease_id"]
         try:
             result = letter_extractor.extract(url)
         except Exception as error:  # noqa: BLE001 - every failure becomes last_error on the letter's row
-            reason = failure_reason(error)
-            if reason == "extract_error" and not isinstance(error, ExtractionError):
-                logger.exception("%s: failed unexpectedly", letter_slug(url))
-                unexpected = True
-            else:
-                logger.warning("%s: failed (%s, %s)%s", letter_slug(url), reason, type(error).__name__,
-                               f": {error}" if isinstance(error, ExtractionError) else "")
+            reason = log_failure(url, error)
+            failed = True
             uow.letters.fail_analysis(url, lease, reason)
             uow.commit()
             if reason == "quota":
@@ -86,4 +79,4 @@ def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], mod
         analyzed += uow.letters.finish_analysis(url, lease, result.to_json(), analysis_version(model),
                                                 sorted(result.codes()), result.source_sha256, result.source_size)
         uow.commit()
-    return DrainResult(analyzed, unexpected)
+    return DrainResult(analyzed, failed)

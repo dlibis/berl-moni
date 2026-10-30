@@ -10,6 +10,7 @@ exit after the schedule check writes one `scans` row; a failed scan exits non-ze
 only, never an address.
 """
 import logging
+import os
 import re
 import urllib.error
 import uuid
@@ -107,6 +108,22 @@ def failure_reason(error: Exception) -> LetterReason | Literal["model_overloaded
     if isinstance(error, NoTextError):
         return "no_text"
     return "extract_error"  # ExtractionError and anything else
+
+
+def log_failure(url: str, error: Exception) -> str:
+    """Log a letter that failed and return its reason. On GitHub Actions it is also an ::error annotation,
+    so the run page says which letter failed, why, and links its PDF."""
+    reason, slug = failure_reason(error), letter_slug(url)
+    detail = str(error)[:500]
+    if reason == "extract_error" and not isinstance(error, ExtractionError):
+        logger.exception("%s: failed unexpectedly", slug)
+    else:
+        logger.warning("%s: failed (%s, %s)%s", slug, reason, type(error).__name__, f": {detail}" if detail else "")
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        message = f"{reason} ({type(error).__name__}): {detail}\n{url}"
+        message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::error title=Letter {slug} failed::{message}", flush=True)
+    return reason
 
 
 def limits(uow) -> tuple[int, int, int]:
@@ -236,7 +253,7 @@ def fetch_if_due(uow, ports: Ports, now: datetime) -> int:
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return 1
-    return 1 if drain_queue(uow, ports.extractor, ports.model).unexpected else 0
+    return 1 if drain_queue(uow, ports.extractor, ports.model).failed else 0
 
 
 def send_job(uow, ports: Ports) -> int:
@@ -267,7 +284,7 @@ def send_job(uow, ports: Ports) -> int:
     except FeedUnreachable as error:
         logger.error("feed unreachable: %s", error)
         return finish_scan(uow, day, "failed", "feed_unreachable")
-    broken = drain_queue(uow, ports.extractor, ports.model).unexpected  # the run sends, then fails
+    broken = drain_queue(uow, ports.extractor, ports.model).failed  # the run sends, then fails
     urls = uow.letters.auto_eligible(uow.setting("auto_since"))
     stats = ScanCounts(letters_in_feed=refreshed.new + refreshed.seen, new_letters=refreshed.new,
                        relevant=len(urls), failed=0)
@@ -369,12 +386,7 @@ def render_all(uow, ports: Ports, out_dir: Path) -> int:
             result = extractor.extract(url)
             pdf = result.relevant_to(programs) and ports.render(result, result.named_matches(programs))
         except Exception as error:  # noqa: BLE001 - one bad letter must not stop the run
-            reason = failure_reason(error)
-            if reason == "extract_error" and not isinstance(error, ExtractionError):
-                logger.exception("%s: failed unexpectedly", slug)
-            else:
-                logger.warning("%s: failed (%s, %s)%s", slug, reason, type(error).__name__,
-                               f": {error}" if isinstance(error, ExtractionError) else "")
+            reason = log_failure(url, error)
             failed += 1
             if reason == "quota":
                 logger.error("--no-email: the model quota ran out, %d letter(s) not scanned", len(urls) - i - 1)

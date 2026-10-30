@@ -48,7 +48,7 @@ def main(argv=None, ports: services.Ports | None = None) -> int:
             return services.send_pending_test(uow, ports, args.to)
         drained = drain_queue(uow, ports.extractor, bootstrap.model_name())  # every run, due or not
         code = services.send_job(uow, ports)
-        return 1 if drained.unexpected else code
+        return 1 if drained.failed else code
 
 
 if __name__ == "__main__":
