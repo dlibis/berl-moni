@@ -7,7 +7,6 @@ import os
 # GITHUB_DISPATCH_TOKEN is optional for `web`: without it the hourly run drains the analysis queue.
 REQUIRED = {
     "web": ["DATABASE_URL", "NEON_AUTH_BASE_URL", "SITE_ORIGIN"],
-    "check": ["DATABASE_URL"],
     "send": ["DATABASE_URL", "RESEND_API_KEY", "MODEL_NAME", "MODEL_PROVIDER"],
     "test_send": ["DATABASE_URL", "RESEND_API_KEY"],
     "render": ["DATABASE_URL", "MODEL_NAME", "MODEL_PROVIDER"],

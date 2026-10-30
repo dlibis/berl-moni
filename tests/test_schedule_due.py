@@ -93,30 +93,19 @@ def test_fetch_due_every_hours():
     assert fetch_due(now, 24, at(2026, 10, 13, 12).isoformat()) is True
 
 
-def test_main_due_when_only_fetch_cadence_is_due(test_db_url, monkeypatch, capsys):
+def test_due_when_only_fetch_cadence_is_due(test_db_url):
     import psycopg
     from psycopg.rows import dict_row
 
-    import common.schedule_due as sd
     from common.db import set_setting
+    from common.schedule_due import eligibility
 
     with psycopg.connect(test_db_url, row_factory=dict_row) as conn:
         conn.execute("DELETE FROM settings WHERE key IN ('schedule', 'always_send', 'fetch_every_hours', 'last_feed_refresh_at')")
         set_setting(conn, "schedule", [])
         set_setting(conn, "always_send", False)
         set_setting(conn, "fetch_every_hours", 1)
-        conn.commit()
-    monkeypatch.setenv("DATABASE_URL", test_db_url)
-    frozen = at(2026, 10, 14, 12)
-
-    class Frozen(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return frozen if tz is None else frozen.astimezone(tz)
-
-    monkeypatch.setattr(sd, "datetime", Frozen)
-    sd.main()
-    assert "due=true" in capsys.readouterr().out
+        assert eligibility(conn, at(2026, 10, 14, 12))[0] is True
 
 
 def test_manual_send_today_does_not_cancel_the_auto_send(test_db_url):

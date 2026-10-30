@@ -114,7 +114,7 @@ def log_failure(url: str, error: Exception) -> str:
     """Log a letter that failed and return its reason. On GitHub Actions it is also an ::error annotation,
     so the run page says which letter failed, why, and links its PDF."""
     reason, slug = failure_reason(error), letter_slug(url)
-    detail = str(error)[:500]
+    detail = re.sub(r"[\w.+-]+@[\w-]+(\.[\w-]+)+", "<email>", str(error))[:500]  # run logs are public
     if reason == "extract_error" and not isinstance(error, ExtractionError):
         logger.exception("%s: failed unexpectedly", slug)
     else:

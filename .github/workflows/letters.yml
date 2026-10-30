@@ -18,23 +18,7 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    outputs:
-      due: ${{ steps.due.outputs.due }}
-      queued: ${{ steps.due.outputs.queued }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-      - run: uv sync --only-group check --no-install-project
-      - id: due
-        run: uv run --no-sync python -m common.schedule_due >> "$GITHUB_OUTPUT"
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
   worker:
-    needs: check
-    if: needs.check.outputs.due == 'true' || needs.check.outputs.queued == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -1,10 +1,6 @@
 """due_day(): is a send due now? Stdlib + psycopg only (plan: T2, Data > Schedule shape)."""
-import os
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
-
-import psycopg
-from psycopg.rows import dict_row
 
 ISRAEL = ZoneInfo("Asia/Jerusalem")
 DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]  # date.weekday() order
@@ -97,14 +93,3 @@ def eligibility(conn, now: datetime) -> tuple[bool, bool]:
            or fetch_due(now, every_hours, last_at))
     return due, has_queued(conn)
 
-
-def main() -> None:
-    """Print GitHub job outputs; invoke with `python -m common.schedule_due`."""
-    with psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row) as conn:
-        due, queued = eligibility(conn, datetime.now(timezone.utc))
-    print(f"due={str(due).lower()}")
-    print(f"queued={str(queued).lower()}")
-
-
-if __name__ == "__main__":
-    main()

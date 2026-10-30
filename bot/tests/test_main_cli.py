@@ -50,6 +50,17 @@ def test_model_overload_has_a_specific_reason(error, reason):
     assert services.failure_reason(error) == reason
 
 
+def test_failure_is_a_github_annotation_with_the_error_and_no_address(monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    url = "https://x/4_21822.pdf"
+    assert services.log_failure(url, model_overloaded()) == "model_overloaded"
+    out = capsys.readouterr().out
+    assert out.startswith("::error title=Letter 21822 failed::model_overloaded (GoogleAPIError): ")
+    assert "high demand" in out and out.rstrip().endswith(f"%0A{url}")
+    services.log_failure(url, requests.Timeout("timed out talking to staff@example.com"))
+    assert "staff@example.com" not in capsys.readouterr().out
+
+
 def letter(url):
     return FeedLetter(url, None, "", (), ())
 
@@ -201,7 +212,7 @@ def test_quota_stops_the_drain_but_analyzed_letters_go_out(db, stubs):
     old = "https://example.com/old.pdf"
     analyzed(db, old)
     stubs.urls, stubs.outcomes = [A, B], {A: Quota("insufficient_quota")}
-    assert run(stubs) == 0
+    assert run(stubs) == 1  # sends what it has, then turns the run red
     assert statuses(db) == {old: ("analyzed", None, 1), A: ("failed", "quota", 0), B: ("queued", None, 0)}
     assert stubs.scanned == [A] and len(stubs.sent) == 1
     [scan] = rows(db, "SELECT * FROM scans")
@@ -210,7 +221,7 @@ def test_quota_stops_the_drain_but_analyzed_letters_go_out(db, stubs):
 
 def test_quota_with_nothing_analyzed_is_nothing_new(db, stubs):
     stubs.urls, stubs.outcomes = [A], {A: Quota()}
-    assert run(stubs) == 0
+    assert run(stubs) == 1
     [scan] = rows(db, "SELECT * FROM scans")
     assert (scan["status"], scan["new_letters"]) == ("nothing_new", 1)
 
@@ -225,9 +236,9 @@ def test_quota_with_nothing_analyzed_is_nothing_new(db, stubs):
     (ExtractionError("x"), "extract_error"),
     (model_overloaded(), "model_overloaded"),
 ])
-def test_failures_are_recorded_and_the_run_continues(db, stubs, error, reason):
+def test_failures_are_recorded_the_run_continues_and_fails(db, stubs, error, reason):
     stubs.urls, stubs.outcomes = [A, B], {A: error}
-    assert run(stubs) == 0
+    assert run(stubs) == 1
     assert statuses(db) == {A: ("failed", reason, 0), B: ("analyzed", None, 1)}
     assert stubs.scanned == [A, B]
 

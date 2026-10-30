@@ -646,9 +646,6 @@ bot = [
     { name = "python-bidi" },
     { name = "reportlab" },
 ]
-check = [
-    { name = "psycopg", extra = ["binary"] },
-]
 dev = [
     { name = "pytest" },
 ]
@@ -679,7 +676,6 @@ bot = [
     { name = "python-bidi", specifier = ">=0.6.11" },
     { name = "reportlab", specifier = ">=5.0.1" },
 ]
-check = [{ name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" }]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [[package]]
