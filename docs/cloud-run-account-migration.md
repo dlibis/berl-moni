@@ -46,27 +46,33 @@ You need:
 - A clone of this repository.
 - Admin access to the GitHub repository and the production Vercel project.
 
-Choose a new project ID now. Project IDs are globally unique and cannot be
-renamed. Use something like `berl-moni-fetch-2026`. Every command below uses it
-as `NEW_PROJECT_ID`.
+The new project already exists in the new account (named "Moni"):
+
+- Project ID: `moni-510609`
+- Project number: `998754133296`
+
+Every command below uses the project ID. The project number appears in the
+Cloud Run service URL, so the new service should be at
+`https://knesset-feed-998754133296.me-west1.run.app`.
 
 Sign in and set the defaults for the rest of the session:
 
 ```sh
 gcloud auth login NEW_ACCOUNT@gmail.com
-export PROJECT=NEW_PROJECT_ID
+export PROJECT=moni-510609
 export REGION=me-west1
 ```
 
-## 3. Create the project and turn on billing
+## 3. Confirm the project and turn on billing
 
 ```sh
-gcloud projects create $PROJECT --name="Berl Moni fetch"
+gcloud projects describe $PROJECT                 # projectNumber should be 998754133296
 gcloud billing accounts list                      # copy the ACCOUNT_ID
 gcloud billing projects link $PROJECT --billing-account=ACCOUNT_ID
 ```
 
-If `projects create` fails because the project ID is taken, pick another ID.
+If `describe` fails, you are signed in to the wrong account or the project is
+not in this account. If billing is already linked, the last command is harmless.
 
 ## 4. Enable the APIs and create the image repository
 
@@ -99,7 +105,7 @@ gcloud projects add-iam-policy-binding $PROJECT \
 ```
 
 Cloud Build also needs to read the uploaded source. Cloud Build stages it in a
-Cloud Storage bucket named `NEW_PROJECT_ID_cloudbuild`, which is created by the first
+Cloud Storage bucket named `moni-510609_cloudbuild`, which is created by the first
 build. If the first build fails with a storage permission error, grant the
 builder `roles/storage.objectViewer` on that bucket and retry.
 
@@ -133,7 +139,7 @@ gcloud builds submit --project=$PROJECT --region=$REGION \
 When it finishes, note the `BUILD_ID` it prints. The image is:
 
 ```text
-me-west1-docker.pkg.dev/NEW_PROJECT_ID/knesset-feed/service:BUILD_ID
+me-west1-docker.pkg.dev/moni-510609/knesset-feed/service:BUILD_ID
 ```
 
 The `.gcloudignore` file limits what is uploaded to the service code. No `.env`,
