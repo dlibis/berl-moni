@@ -4,11 +4,13 @@ export function Pagination({
   count,
   pageSize = 25,
   setPage,
+  disabled,
 }: {
   page: number;
   count: number;
   pageSize?: number;
   setPage: (page: number) => void;
+  disabled?: boolean;
 }) {
   const pages = Math.max(1, Math.ceil(count / pageSize));
   if (pages === 1) return null;
@@ -16,7 +18,7 @@ export function Pagination({
     <div className="mt-4 flex items-center gap-2 text-sm">
       <Button
         variant="outline"
-        disabled={page === 0}
+        disabled={disabled || page === 0}
         onClick={() => setPage(page - 1)}
       >
         הקודם
@@ -26,7 +28,7 @@ export function Pagination({
       </span>
       <Button
         variant="outline"
-        disabled={page + 1 === pages}
+        disabled={disabled || page + 1 === pages}
         onClick={() => setPage(page + 1)}
       >
         הבא

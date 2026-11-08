@@ -12,6 +12,7 @@ import { LastScanLine } from "../features/status/last-scan-card";
 export function Home() {
   const [status, setStatus] = useState<LetterStatusFilter>();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
   return (
     <>
       <PageHeader title="ראשי" detail={<LastScanLine />}>
@@ -19,21 +20,31 @@ export function Home() {
           <Input
             type="search"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(0);
+            }}
             placeholder="חיפוש לפי משרד או מספר בקשה"
             aria-label="חיפוש לפי משרד או מספר בקשה"
             className="w-full sm:w-72"
           />
-          <StatusFilter value={status} onChange={setStatus} />
+          <StatusFilter
+            value={status}
+            onChange={(value) => {
+              setStatus(value);
+              setPage(0);
+            }}
+          />
           <ExportButton />
           <RefreshButton />
         </div>
       </PageHeader>
       <FailedSendRunCard />
       <LettersTable
-        key={JSON.stringify([status, search.trim()])}
         status={status}
         search={search.trim()}
+        page={page}
+        setPage={setPage}
       />
     </>
   );
