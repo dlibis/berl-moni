@@ -120,9 +120,9 @@ def test_all_pages_must_be_returned_once_in_order(pdf_path, numbers):
 
 
 @pytest.mark.parametrize("data,error", [
-    ({}, "invalid scan document"),
+    ({}, "Exceeded maximum output retries"),
     ({"pages": [page(1), page(2)]}, "No budget program rows"),
-    ({"pages": [{**page(1), "rows": [{}]}, page(2)]}, "invalid scan document"),
+    ({"pages": [{**page(1), "rows": [{}]}, page(2)]}, "Exceeded maximum output retries"),
     ({"pages": [{**page(1), "history_present": True}, page(2)]}, "detected history table"),
     ({"pages": [{**page(1), "budget_table_present": True}, page(2)]}, "detected budget table"),
     ({"pages": [page(1, history=[{"label": "", "columns": ["a"], "rows": [["x", "y"]]}]), page(2)]}, "incomplete history table"),
@@ -144,6 +144,24 @@ def test_a_bad_answer_gets_one_retry_with_the_problem(pdf_path):
 def test_two_bad_answers_fail_with_the_problem(pdf_path):
     row = {"code": "045203", "name": "שם", "expenditure": {"before": 1, "change": 2, "after": 4}}
     models = FakeModels({"pages": [page(1), page(2, [row])]})
-    with pytest.raises(ExtractionError, match=r"Page 2:.*arithmetic.*after one retry"):
+    with pytest.raises(ExtractionError, match=r"Page 2:.*arithmetic.*Exceeded maximum output retries"):
         read(pdf_path, models)
     assert models.calls == 2
+
+
+def test_early_model_failure_preserves_diagnostic_without_body_or_retry_claim(pdf_path):
+    from pydantic_ai import UnexpectedModelBehavior
+
+    calls = 0
+    error = UnexpectedModelBehavior("Model token limit exceeded", body="private document contents")
+
+    def respond(messages, info):
+        nonlocal calls
+        calls += 1
+        raise error
+
+    with pytest.raises(ExtractionError) as caught:
+        read_document(str(pdf_path), model=FunctionModel(respond))
+    assert str(caught.value) == "Model token limit exceeded"
+    assert caught.value.__cause__ is error
+    assert calls == 1

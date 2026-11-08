@@ -132,8 +132,9 @@ def read_document(path: str, *, model) -> VisualDocument:
         document = agent.run_sync([f"{PROMPT}\nThe PDF has {page_count} pages; return all {page_count}.",
                                    BinaryContent(Path(path).read_bytes(), media_type="application/pdf")]).output
     except UnexpectedModelBehavior as error:
-        raise ExtractionError(f"{problems[-1] if problems else 'Visual model returned an invalid scan document'}"
-                              " (after one retry)") from error
+        detail = f"{problems[-1]}; " if problems else ""
+        # The exception body may contain the document; keep only its diagnostic message in public logs.
+        raise ExtractionError(f"{detail}{error.message}") from error
     pages, rows, history = [], [], []
     for page in document.pages:
         pages.append(page.text)
