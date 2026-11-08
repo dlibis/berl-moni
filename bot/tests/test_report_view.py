@@ -31,3 +31,25 @@ def test_report_view_sections(complete_extraction):
     assert view["appendix"]["table"]["rows"][1] == ["200101", "a", "מ-", "100", "-60", "לא"]
     assert view["appendix"]["decision_links"] == ["https://example.test/decision"]
     assert view["appendix"]["budget_history"][0]["table"]["columns"] == ["year", "net"]
+
+
+@pytest.mark.parametrize("stored_links", [
+    "1. https://www.gov.il/he/pages/dec3425\n\n  2. https://www.gov.il/he/pages/dec550_2021  ",
+    " https://www.gov.il/he/pages/dec3425 \nhttps://www.gov.il/he/pages/dec550_2021",
+])
+def test_report_view_returns_urls_without_list_numbering(complete_extraction, stored_links):
+    complete_extraction.fields.decision_links = stored_links
+
+    view = report_view(complete_extraction, {})
+
+    assert view["appendix"]["decision_links"] == [
+        "https://www.gov.il/he/pages/dec3425",
+        "https://www.gov.il/he/pages/dec550_2021",
+    ]
+    assert complete_extraction.fields.decision_links == stored_links
+
+
+def test_report_view_without_decision_links(complete_extraction):
+    complete_extraction.fields.decision_links = " \n\n"
+
+    assert report_view(complete_extraction, {})["appendix"]["decision_links"] == []

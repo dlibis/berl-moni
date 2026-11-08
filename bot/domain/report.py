@@ -5,6 +5,8 @@ so the two show the same thing: header, summary box, money flow (sources -> hubs
 why the money moves, and the appendix with every raw figure. `programs` is {code: master name}, as
 the renderer takes it. Text here is in logical order; the PDF reorders Hebrew itself.
 """
+import re
+
 from bot.domain.extraction import CODE_COLUMN, NAME_COLUMN, Extraction
 from bot.domain.money_flow import INTERNAL_HUB, Item, fold, hubs, transfer_summary
 from bot.domain.request_fields import RequestFields
@@ -35,7 +37,8 @@ def report_view(extraction: Extraction, programs: dict[str, str]) -> dict:
         "appendix": {"table": {"rows": rows, "spans": spans},
                      "budget_history": [{"label": label, "table": _table(table)}
                                         for label, table in e.budget_history if table is not None and not table.empty],
-                     "decision_links": [url.strip() for url in fields.decision_links.split("\n") if url.strip()],
+                     "decision_links": [re.sub(r"^\d+\.\s*", "", url.strip())
+                                        for url in fields.decision_links.split("\n") if url.strip()],
                      "staffing_changes": fields.staffing_changes},
     }
 
