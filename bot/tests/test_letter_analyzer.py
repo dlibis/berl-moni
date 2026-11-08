@@ -33,13 +33,19 @@ def test_review_replaces_a_wrong_draft_once():
     assert len(sent) == 2 and usage["calls"] == 2   # one draft, one review: never a second correction
 
 
-def test_an_ok_review_keeps_the_draft():
+def test_an_ok_review_keeps_the_draft(caplog):
+    import logging
+
     analyzer, _ = canned([DRAFT, _Review(ok=True)])
 
-    coalition, programs, usage = analyzer("טקסט המכתב")
+    with caplog.at_level(logging.INFO):
+        coalition, programs, usage = analyzer("טקסט המכתב")
 
     assert coalition == "לא" and programs[0].uses[0].text == "תפעול ואחזקת המשרד"
     assert not usage["corrected"]
+    assert "stage=narrative_draft response=1" in caplog.text
+    assert "stage=narrative_review response=1" in caplog.text
+    assert "response=2" not in caplog.text
 
 
 def test_review_starts_with_the_drafts_prompt_so_the_cache_can_serve_it():

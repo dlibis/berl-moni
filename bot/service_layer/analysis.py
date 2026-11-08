@@ -71,6 +71,7 @@ def drain_queue(uow, extractor: Callable[[dict[str, str]], LetterExtractor], mod
     while (letter := uow.letters.claim()) is not None:
         uow.commit()
         url, lease = letter["letter_url"], letter["lease_id"]
+        logger.info("%s: analysis started model=%s", letter_slug(url), model)
         try:
             result = letter_extractor.extract(url)
         except Exception as error:  # noqa: BLE001 - every failure becomes last_error on the letter's row

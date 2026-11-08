@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from bot.domain.request_fields import ProgramUses, Use
 from common.config import DEFAULT_MODEL
+from bot.adapters.llm.diagnostics import model_diagnostics
 
 # Increment bot.domain.versions.PROMPT_VERSION whenever these prompt instructions change.
 # The report's reader wants, at a glance, what this request's money is for. Two lessons from real
@@ -120,9 +121,11 @@ class LlmAnalyzer:
         """One structured-output model call: (the parsed answer, the run result, for its messages and usage)."""
         from pydantic_ai import Agent
 
-        agent = Agent(self.model, output_type=schema, instructions=SYSTEM_PROMPT,
-                      model_settings={"temperature": 0, "max_retries": 3})
-        result = agent.run_sync(prompt, message_history=history)
+        settings = {"temperature": 0, "max_retries": 3}
+        agent = Agent(self.model, output_type=schema, instructions=SYSTEM_PROMPT, model_settings=settings)
+        stage = "narrative_draft" if schema is _Analysis else "narrative_review"
+        with model_diagnostics(stage, self.model, settings, len(history or [])):
+            result = agent.run_sync(prompt, message_history=history)
         return result.output, result
 
     @staticmethod

@@ -3,6 +3,7 @@ checks below goes back to the model once, with the problem, before the letter fa
 from __future__ import annotations
 
 import re
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +11,9 @@ from pydantic import BaseModel, Field
 
 from bot.domain.errors import ExtractionError
 from bot.domain.table import Table
+from bot.adapters.llm.diagnostics import model_diagnostics
+
+logger = logging.getLogger(__name__)
 
 
 class Amounts(BaseModel):
@@ -116,7 +120,9 @@ def read_document(path: str, *, model) -> VisualDocument:
     if not page_count:
         raise ExtractionError("Scanned document has no pages")
     # One retry with the problem; no HTTP retries — each attempt resends the whole PDF.
-    agent = Agent(model, output_type=ScanDocument, retries={"output": 1}, model_settings={"max_retries": 0})
+    settings = {"max_retries": 0}
+    agent = Agent(model, output_type=ScanDocument, retries={"output": 1}, model_settings=settings)
+    logger.info("visual_scan input pages=%d bytes=%d output_retries=1", page_count, Path(path).stat().st_size)
     problems = []
 
     @agent.output_validator
@@ -125,18 +131,22 @@ def read_document(path: str, *, model) -> VisualDocument:
             _validate(document, page_count)
         except ExtractionError as error:
             problems.append(str(error))
+            logger.warning("visual_scan validation_failure=%d problem=%s", len(problems), error)
             raise ModelRetry(str(error)) from error
         return document
 
     try:
-        document = agent.run_sync([f"{PROMPT}\nThe PDF has {page_count} pages; return all {page_count}.",
-                                   BinaryContent(Path(path).read_bytes(), media_type="application/pdf")]).output
+        with model_diagnostics("visual_scan", model, settings):
+            document = agent.run_sync([f"{PROMPT}\nThe PDF has {page_count} pages; return all {page_count}.",
+                                       BinaryContent(Path(path).read_bytes(), media_type="application/pdf")]).output
     except UnexpectedModelBehavior as error:
         detail = f"{problems[-1]}; " if problems else ""
         # The exception body may contain the document; keep only its diagnostic message in public logs.
         raise ExtractionError(f"{detail}{error.message}") from error
     pages, rows, history = [], [], []
     for page in document.pages:
+        logger.info("visual_scan page=%d text_chars=%d budget_rows=%d history_tables=%d",
+                    page.page_number, len(page.text), len(page.rows), len(page.history))
         pages.append(page.text)
         rows.extend((r.code.zfill(6), r.name.strip(), r.expenditure.before, r.expenditure.after)
                     for r in page.rows)
