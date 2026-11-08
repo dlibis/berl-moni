@@ -1,142 +1,254 @@
-# Move the Knesset fetch service to another Google account
+# Move the Knesset fetch proxy to a completely new Google account
 
-The service is a regional Cloud Run container in `me-west1` (Tel Aviv), in
-project `berl-moni-fetch-20261026`. The project owns the service, registry,
-build configuration, and service accounts; a Google account is an IAM identity
-that can be granted access to those resources.
+This runbook recreates the Knesset fetch service from scratch under a brand-new
+Google account. You do not need access to the old account to follow it, except
+for the final cleanup in step 11.
 
-## Choose the move
+## 1. What this service is
 
-**Only changing who manages it:** add the new account to the existing project.
-This keeps the Cloud Run URL and requires no application or caller changes.
-This is the easiest and safest option.
+The Knesset website blocks requests from cloud providers outside Israel, so the
+GitHub worker and the Vercel app cannot fetch from it directly. The **fetch
+proxy** is a small container that runs in Google Cloud Run in Tel Aviv
+(`me-west1`) and makes those requests from inside Israel.
 
-**Moving it into a different project:** deploy a second copy there, verify it,
-switch callers, then retire the old copy. Cloud Run services cannot be moved
-between projects in place. The new URL and a new auth token must be configured
-in GitHub Actions and Vercel.
+It does one job and holds no secrets other than its own access token. It has no
+database, email, AI model, or GitHub credentials.
 
-## Option A: grant the new account access to the existing project
+| Item | Value |
+| --- | --- |
+| Code | `cloud/knesset_feed/` (`app.py`, `Dockerfile`, `cloudbuild.yaml`) |
+| Cloud Run service name | `knesset-feed` |
+| Artifact Registry repository | `knesset-feed` (Docker format) |
+| Region | `me-west1` (Tel Aviv). Do not change it. Other regions are blocked. |
+| Container port | `8080` |
+| Endpoints | `GET /feed`, `GET /approvals`, `GET /pdf?url=...` |
+| Authentication | Header `Authorization: Bearer <KNESSET_FETCH_TOKEN>` |
 
-An existing project Owner can run this, replacing the email:
+Who calls it:
 
-```sh
-gcloud projects add-iam-policy-binding berl-moni-fetch-20261026 \
-  --member='user:NEW_ACCOUNT@gmail.com' --role='roles/owner'
-```
+- **GitHub Actions** (`letters.yml`, `always_send.yml`) is the scheduled worker.
+- **Vercel** (the web app) uses it for the manual "refresh" button.
 
-Owner is broad access. For a narrower setup, grant `roles/run.admin`,
-`roles/artifactregistry.admin`, and `roles/cloudbuild.builds.editor` on the
-project, plus `roles/iam.serviceAccountUser` on the `knesset-build` service
-account. The new account also needs permission to use the project’s billing
-account for future billable changes. Confirm access with:
+Both read two settings: `KNESSET_FETCH_URL` (the service address) and
+`KNESSET_FETCH_TOKEN` (the password). A move means standing up a new copy, then
+pointing those two settings at it.
+
+> The Neon database, Neon Auth (`auth_proxy.py`), and the email provider are
+> separate. They do not move with this service and need no changes.
+
+## 2. Before you start
+
+You need:
+
+- The new Google account, with a **billing account** it can use. Cloud Run needs
+  billing enabled even though usage is usually inside the free allowance.
+- The [`gcloud` CLI](https://cloud.google.com/sdk/docs/install) installed.
+- A clone of this repository.
+- Admin access to the GitHub repository and the production Vercel project.
+
+Choose a new project ID now. Project IDs are globally unique and cannot be
+renamed. Use something like `berl-moni-fetch-2026`. Every command below uses it
+as `NEW_PROJECT_ID`.
+
+Sign in and set the defaults for the rest of the session:
 
 ```sh
 gcloud auth login NEW_ACCOUNT@gmail.com
-gcloud config set project berl-moni-fetch-20261026
-gcloud run services describe knesset-feed --region=me-west1
+export PROJECT=NEW_PROJECT_ID
+export REGION=me-west1
 ```
 
-Keep the existing project and GitHub/Vercel configuration in place.
+## 3. Create the project and turn on billing
 
-## Option B: recreate it in a new project
+```sh
+gcloud projects create $PROJECT --name="Berl Moni fetch"
+gcloud billing accounts list                      # copy the ACCOUNT_ID
+gcloud billing projects link $PROJECT --billing-account=ACCOUNT_ID
+```
 
-Use a new project ID below in place of `NEW_PROJECT_ID`; project IDs are
-globally unique and cannot be renamed. Link the project to the intended billing
-account and grant the deploying account permission to deploy services, create
-builds, use service accounts, and write Artifact Registry images. Enable the
-required APIs and create the regional image repository:
+If `projects create` fails because the project ID is taken, pick another ID.
+
+## 4. Enable the APIs and create the image repository
 
 ```sh
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com --project=NEW_PROJECT_ID
+  artifactregistry.googleapis.com --project=$PROJECT
+
 gcloud artifacts repositories create knesset-feed \
-  --project=NEW_PROJECT_ID --location=me-west1 \
-  --repository-format=docker
+  --project=$PROJECT --location=$REGION --repository-format=docker
 ```
 
-Create a dedicated Cloud Build service account named `knesset-build`. Give it
-the permissions needed by the build: read staged source, write images to the
-`knesset-feed` Artifact Registry repository, and write build logs. Pass it to
-`gcloud builds submit` as shown below. Keep runtime permissions separate: the
-Cloud Run runtime account needs no project roles. If project policy requires
-explicit runtime service-account creation, create a dedicated account with no
-roles and deploy using it.
+## 5. Create the build service account
 
-Generate a fresh random `KNESSET_FETCH_TOKEN`. Set it on the new Cloud Run
-service using a protected environment file (mode `600`) or Secret Manager; do
-not place the token in a command line, source file, or logs. The application
-expects it as the `KNESSET_FETCH_TOKEN` environment variable.
-
-From the repository root, build the image:
+A dedicated account named `knesset-build` runs the build. It is separate from
+the account that runs the service.
 
 ```sh
-gcloud builds submit --project=NEW_PROJECT_ID --region=me-west1 \
-  --service-account=projects/NEW_PROJECT_ID/serviceAccounts/knesset-build@NEW_PROJECT_ID.iam.gserviceaccount.com \
+gcloud iam service-accounts create knesset-build --project=$PROJECT
+
+BUILDER=knesset-build@$PROJECT.iam.gserviceaccount.com
+
+# Write images to the repository
+gcloud artifacts repositories add-iam-policy-binding knesset-feed \
+  --project=$PROJECT --location=$REGION \
+  --member="serviceAccount:$BUILDER" --role=roles/artifactregistry.writer
+
+# Write build logs
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:$BUILDER" --role=roles/logging.logWriter
+```
+
+Cloud Build also needs to read the uploaded source. Cloud Build stages it in a
+Cloud Storage bucket named `NEW_PROJECT_ID_cloudbuild`, which is created by the first
+build. If the first build fails with a storage permission error, grant the
+builder `roles/storage.objectViewer` on that bucket and retry.
+
+The service that runs the container (the runtime account) needs no roles. Leave
+it with the default settings.
+
+## 6. Create the access token
+
+Generate a fresh random token. Do **not** reuse the old one. Never paste it into
+a command line, a file in the repository, or a chat.
+
+```sh
+umask 077
+printf 'KNESSET_FETCH_TOKEN: "%s"\n' "$(openssl rand -hex 32)" > ./knesset-fetch-env.yaml
+```
+
+This creates a private file (mode 600) in your current folder. Keep it outside
+the repository (or confirm it is ignored by git). You will use it for the deploy
+in step 8 and read it again in step 10. Delete it when you are finished.
+
+## 7. Build the container image
+
+Run this from the **repository root** (the folder that contains `cloud/`):
+
+```sh
+gcloud builds submit --project=$PROJECT --region=$REGION \
+  --service-account=projects/$PROJECT/serviceAccounts/$BUILDER \
   --config=cloud/knesset_feed/cloudbuild.yaml .
 ```
 
-Deploy the built image to Cloud Run in `me-west1`, preserving the current
-service settings: request-based billing, 1 vCPU, 512 MiB, min 0/max 1
-instances, concurrency 4, and 300-second timeout. Configure the new token as
-`KNESSET_FETCH_TOKEN`; make the service publicly invokable at the platform
-layer because the application itself checks the bearer token. Use the image
-URI printed by Cloud Build:
+When it finishes, note the `BUILD_ID` it prints. The image is:
 
 ```text
 me-west1-docker.pkg.dev/NEW_PROJECT_ID/knesset-feed/service:BUILD_ID
 ```
 
-With the token stored in a mode-600 YAML file outside the repository (for
-example, `./knesset-fetch-env.yaml`), deploy with:
+The `.gcloudignore` file limits what is uploaded to the service code. No `.env`,
+database, email, or client files are sent.
+
+## 8. Deploy to Cloud Run
 
 ```sh
-gcloud run deploy knesset-feed --project=NEW_PROJECT_ID --region=me-west1 \
-  --image=me-west1-docker.pkg.dev/NEW_PROJECT_ID/knesset-feed/service:BUILD_ID \
+gcloud run deploy knesset-feed --project=$PROJECT --region=$REGION \
+  --image=me-west1-docker.pkg.dev/$PROJECT/knesset-feed/service:BUILD_ID \
   --port=8080 --cpu=1 --memory=512Mi --min=0 --max=1 \
   --concurrency=4 --timeout=300 --allow-unauthenticated \
   --env-vars-file=./knesset-fetch-env.yaml
 ```
 
-Delete that temporary file after deploy. A Secret Manager secret is preferable
-if you want Google-managed secret storage; grant the runtime account
-`roles/secretmanager.secretAccessor` and deploy with `--set-secrets` instead.
+Why these settings:
 
-The deployer needs permission to act as the selected runtime service account
-(`roles/iam.serviceAccountUser`). The returned Cloud Run service URL is the
-new `KNESSET_FETCH_URL`.
+- `--allow-unauthenticated` lets the request reach the container. The app itself
+  rejects any request without the correct bearer token.
+- `--min=0` means it costs nothing while idle. `--max=1` caps cost.
+- `--timeout=300` must stay at 300 seconds. The `/approvals` call can take
+  up to 200 seconds.
 
-## Verify and cut over
+The command prints a **Service URL** such as
+`https://knesset-feed-123456789.me-west1.run.app`. This is your new
+`KNESSET_FETCH_URL`. If you can't see it, run:
 
-Before changing callers, check the new service with the same API contract:
+```sh
+gcloud run services describe knesset-feed --project=$PROJECT --region=$REGION \
+  --format='value(status.url)'
+```
 
-- `GET <NEW_URL>/feed` with `Authorization: Bearer <new token>` returns JSON.
-- `GET <NEW_URL>/pdf?url=<encoded Knesset PDF URL>` returns a valid PDF.
-- Requests without the bearer token return `401`.
+If you prefer Google-managed secret storage over the env file, put the token in
+Secret Manager, grant the runtime service account
+`roles/secretmanager.secretAccessor`, and deploy with `--set-secrets` instead of
+`--env-vars-file`. The result is the same for the app.
 
-Update GitHub repository variable `KNESSET_FETCH_URL` and secret
-`KNESSET_FETCH_TOKEN`. Update the same variable and secret in the production
-Vercel project, then redeploy Vercel so its runtime uses the new values. The
-GitHub worker workflow (`letters.yml`) reads those repository
-settings. Do not dispatch an email workflow as a connectivity test; it can
-send real mail.
+## 9. Test the new service before changing anything else
 
-Verify a production manual feed refresh and a scheduled worker run. Keep the
-old service and credentials available until both callers succeed; then remove
-the old service/project only if it is no longer needed. Removing a project or
-unlinking billing can affect other resources and should be checked separately.
+Load the token into your shell without printing it, then test:
 
-## Configuration to carry forward
+```sh
+TOKEN=$(sed -n 's/^KNESSET_FETCH_TOKEN: "\(.*\)"$/\1/p' ./knesset-fetch-env.yaml)
+URL=https://YOUR-NEW-SERVICE-URL
 
-- Region: `me-west1` (Tel Aviv)
-- Service and Artifact Registry repository: `knesset-feed`
-- Container port: `8080`
-- Routes: authenticated `GET /feed` and `GET /pdf`
-- URL variable: `KNESSET_FETCH_URL`
-- Token secret: `KNESSET_FETCH_TOKEN` (rotate when recreating)
-- The service fetches only; it has no database, email, model, or GitHub token.
-- No static IP, VPC connector, NAT gateway, or separate scheduler is required.
+curl -s -o /dev/null -w '%{http_code}\n' "$URL/feed"                      # expect 401
+curl -s -H "Authorization: Bearer $TOKEN" "$URL/feed" | head -c 300      # expect JSON
+curl -s -H "Authorization: Bearer $TOKEN" "$URL/approvals" | head -c 300 # expect JSON
+```
 
-Cloud Run’s free allowance is not a spending cap; billing-account free usage
-is shared, and registry storage, builds, and network transfer can still incur
-charges. Check the new billing account’s budgets and usage after cutover.
+Also test one PDF: take a PDF link from the `/feed` output (it must be under
+`https://fs.knesset.gov.il/globaldocs/FINANCE/`), URL-encode it, and request
+`$URL/pdf?url=<encoded>` with the same header. Expect a valid PDF.
+
+Do not continue until all four checks behave as described. Do **not** start the
+GitHub email workflows as a test. They can send real email and cost money for
+model usage.
+
+## 10. Switch the callers to the new service
+
+Do both places. Use the **new** URL and the **new** token.
+
+**GitHub** (repository settings, Secrets and variables, Actions):
+
+- Variable `KNESSET_FETCH_URL` = the new service URL, with no trailing path.
+- Secret `KNESSET_FETCH_TOKEN` = the new token.
+
+**Vercel** (production project, Settings, Environment Variables):
+
+- `KNESSET_FETCH_URL` = the new service URL.
+- `KNESSET_FETCH_TOKEN` = the new token.
+- Then **redeploy** the project. Vercel only reads changed variables on a new
+  deployment.
+
+Then confirm:
+
+1. In the production app, press the manual feed refresh. It should succeed.
+2. Wait for the next scheduled worker run in GitHub Actions and check that it
+   finishes green.
+
+If either fails, set `KNESSET_FETCH_URL` and `KNESSET_FETCH_TOKEN` back to the
+old values and redeploy Vercel. The old service keeps working until you delete it.
+
+## 11. Clean up
+
+1. Delete the local token file: `rm ./knesset-fetch-env.yaml`
+2. Once both callers have worked with the new service for a few days, delete the
+   old Cloud Run service, or the old project, from the old account. Deleting a
+   project removes everything in it, so check first that nothing else lives
+   there.
+3. Check the new billing account for a budget alert and review usage after the
+   first week. The free allowance is not a spending cap. Container image
+   storage, builds, and network transfer can still cost money.
+
+## 12. Quick reference
+
+Settings to carry over exactly:
+
+- Region `me-west1`; service and repository both named `knesset-feed`
+- Port `8080`; 1 vCPU; 512 MiB; min 0, max 1 instance; concurrency 4; timeout 300 s
+- Public at the Google layer, protected by the bearer token in the app
+- Runtime account has no roles; build account is `knesset-build`
+
+Settings that change:
+
+- Project ID, service URL, and `KNESSET_FETCH_TOKEN` (always generate a new one)
+
+Not needed: static IP, VPC connector, NAT gateway, Cloud Scheduler.
+
+Troubleshooting:
+
+| Symptom | Likely cause |
+| --- | --- |
+| Build fails with a permission error | Missing role from step 5, or APIs not yet enabled |
+| `/feed` returns 401 with the token | Token in the env file differs from the one you sent |
+| `/feed` or `/pdf` times out or is refused by Knesset | Service is not in `me-west1` |
+| Web app still uses the old service | Vercel was not redeployed after the variable change |
+| Worker fails but the web app works | GitHub variable or secret not updated |
