@@ -27,6 +27,8 @@ FILTERS = {
     "needs_analysis": f"{RELEVANT} AND NOT {COMPLETE}",
     "relevant": RELEVANT,
     "irrelevant": f"{COMPLETE} AND NOT {RELEVANT}",
+    "passed": "passed IS TRUE",
+    "not_passed": "passed IS FALSE",
 }
 
 ORDER = "ORDER BY letter_date DESC NULLS LAST, letter_url"

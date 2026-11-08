@@ -4,7 +4,9 @@ export type LetterStatusFilter =
   | "requires_review"
   | "needs_analysis"
   | "relevant"
-  | "irrelevant";
+  | "irrelevant"
+  | "passed"
+  | "not_passed";
 
 export type AnalysisStatus =
   "discovered" | "queued" | "analyzing" | "analyzed" | "failed";

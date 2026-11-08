@@ -2,14 +2,14 @@
 
 This service runs only the public Knesset feed and source-PDF requests in Cloud Run
 `me-west1` (Tel Aviv). It has no database, model, email, or GitHub credentials.
-GitHub retains the schedules, analysis, and send jobs; Vercel retains the app.
+Neon triggers the schedule checks; GitHub runs analysis and send jobs; Vercel hosts the app.
 
 `GET /feed` uses the existing feed adapter and returns serialized `FeedLetter`
 objects. `GET /approvals` returns all approved request-number sets with nullable
 `approved_date` values, without fetching PDFs. It uses bounded parallel pagination
 and fails if the page counts are inconsistent. `GET /pdf?url=...` accepts only HTTPS files under
 `fs.knesset.gov.il/globaldocs/FINANCE/`, follows no redirects, rejects non-PDF
-responses, and limits each PDF to 64 MiB. Both endpoints require
+responses, and limits each PDF to 64 MiB. All three endpoints require
 `Authorization: Bearer <KNESSET_FETCH_TOKEN>` and return `Cache-Control: no-store`.
 
 ## Deployment
@@ -17,7 +17,7 @@ responses, and limits each PDF to 64 MiB. Both endpoints require
 For transferring management or recreating this service in another Google
 account/project, see [the account migration runbook](../../docs/cloud-run-account-migration.md).
 
-Project: `berl-moni-fetch-20261026`, owned by `phoenix409@gmail.com`.
+Project: `moni-510609` (project number `998754133296`).
 Service and Artifact Registry repository: `knesset-feed`, region `me-west1`.
 `.gcloudignore` restricts the upload to the service and its feed/domain modules;
 no `.env`, database, email, model, or client files are uploaded.
@@ -25,9 +25,9 @@ no `.env`, database, email, model, or client files are uploaded.
 Build from the repository root with:
 
 ```sh
-gcloud builds submit --project=berl-moni-fetch-20261026 \
-  --account=phoenix409@gmail.com --region=me-west1 \
-  --service-account=projects/berl-moni-fetch-20261026/serviceAccounts/knesset-build@berl-moni-fetch-20261026.iam.gserviceaccount.com \
+gcloud builds submit --project=moni-510609 \
+  --region=me-west1 \
+  --service-account=projects/moni-510609/serviceAccounts/knesset-build@moni-510609.iam.gserviceaccount.com \
   --config=cloud/knesset_feed/cloudbuild.yaml .
 ```
 
@@ -35,13 +35,15 @@ The dedicated builder can read staged source, write images in this repository,
 and write Cloud Logging build logs. These permissions are separate from the
 runtime service account, which has no project roles.
 
-Live service base URL: `https://knesset-feed-706559335784.me-west1.run.app`.
+Live service base URL: `https://knesset-feed-998754133296.me-west1.run.app`.
 
 Deploy the resulting Artifact Registry image with request-based billing,
 1 vCPU, 512 MiB memory, zero minimum instances, one maximum instance, four
 concurrent requests per instance, and a 300-second timeout. The runtime service
-account needs no project roles. The Cloud Run endpoint permits invocation and
-the application enforces the bearer token. Keep the token in a mode-600
+account `knesset-runtime@moni-510609.iam.gserviceaccount.com` has no project roles.
+Cloud Run permits invocation only by the configured GitHub and Vercel caller
+identities; the application also enforces the bearer token. See the
+[IAM authentication setup](../../docs/cloud-run-iam-auth.md). Keep the token in a mode-600
 temporary environment file when deploying; never put it on the command line,
 in this repository, or in logs.
 
@@ -52,8 +54,8 @@ internet transfer from Israel and retained container images may incur charges.
 ## Callers and rollback
 
 Set the service base URL as the GitHub repository variable `KNESSET_FETCH_URL`
-and the token as repository secret `KNESSET_FETCH_TOKEN`. Both `letters.yml`
-and `always_send.yml` pass these to the worker. Configure the same two variables
+and the token as repository secret `KNESSET_FETCH_TOKEN`. `letters.yml`
+passes these to the worker. Configure the same two variables
 in the production Vercel project to cover the manual refresh button.
 
 Local callers keep the existing direct Knesset path when `KNESSET_FETCH_URL` is

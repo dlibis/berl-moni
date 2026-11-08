@@ -14,6 +14,8 @@ const OPTIONS: [LetterStatusFilter, string][] = [
   ["needs_analysis", "דורשים ניתוח"],
   ["relevant", "רלוונטי"],
   ["irrelevant", "לא רלוונטי"],
+  ["passed", "עברה"],
+  ["not_passed", "לא עברה"],
 ];
 
 export function StatusFilter({

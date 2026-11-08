@@ -167,6 +167,8 @@ def test_manual_flags_and_requires_review_filter(client, db, monkeypatch):
     assert body["requires_review"] is True and body["passed"] is True
     filtered = client.get("/api/v1/letters?status=requires_review").get_json()["items"]
     assert [i["slug"] for i in filtered] == [slug]
+    assert [i["slug"] for i in client.get("/api/v1/letters?status=passed").get_json()["items"]] == [slug]
+    assert slug not in {i["slug"] for i in client.get("/api/v1/letters?status=not_passed").get_json()["items"]}
     monkeypatch.setattr("web.bootstrap.dispatch", lambda: True)
     client.post(f"/api/v1/letters/{slug}/analyze", json={}, headers=ORIGIN)
     assert client.get(f"/api/v1/letters/{slug}").get_json()["requires_review"] is True
