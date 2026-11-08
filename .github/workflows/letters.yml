@@ -5,10 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "drain: analyze queued letters"
+        description: "drain: process letters; auth-check: read-only fetcher connectivity"
         required: false
         type: choice
-        options: [drain]
+        options: [drain, auth-check]
 
 concurrency:
   group: letters
@@ -16,6 +16,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   worker:
@@ -25,7 +26,35 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-heb
       - run: uv sync --group bot
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: moni-510609
+          workload_identity_provider: ${{ vars.KNESSET_FETCH_IDENTITY_PROVIDER }}
+      - name: Check fetcher authentication without processing or sending mail
+        if: inputs.mode == 'auth-check'
+        run: |
+          uv run --no-sync python - <<'PY'
+          import os
+          from urllib.request import urlopen
+          from bot.adapters.knesset.identity import GoogleIdentity
+          from bot.adapters.knesset.remote import KnessetClient
+          url = os.environ["KNESSET_FETCH_URL"]
+          client = KnessetClient(url, os.environ["KNESSET_FETCH_TOKEN"],
+                                 GoogleIdentity(url, os.environ["KNESSET_FETCH_SERVICE_ACCOUNT"]))
+          letters = client.fetch_letters()
+          print(f"Authenticated feed: {len(letters)} letters")
+          print(f"Authenticated approvals: {len(client.fetch_approvals())} records")
+          assert letters, "Expected a feed letter for the PDF check"
+          with urlopen(client.pdf_request(letters[0].url), timeout=60) as response:
+              assert response.status == 200 and response.read(5) == b"%PDF-"
+          print("Authenticated PDF: valid signature")
+          PY
+        env:
+          KNESSET_FETCH_URL: ${{ vars.KNESSET_FETCH_URL }}
+          KNESSET_FETCH_TOKEN: ${{ secrets.KNESSET_FETCH_TOKEN }}
+          KNESSET_FETCH_SERVICE_ACCOUNT: ${{ vars.KNESSET_FETCH_SERVICE_ACCOUNT }}
       - run: uv run --no-sync python -m bot.entrypoints.main
+        if: inputs.mode != 'auth-check'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
@@ -34,3 +63,4 @@ jobs:
           MODEL: ${{ vars.MODEL }}
           KNESSET_FETCH_URL: ${{ vars.KNESSET_FETCH_URL }}
           KNESSET_FETCH_TOKEN: ${{ secrets.KNESSET_FETCH_TOKEN }}
+          KNESSET_FETCH_SERVICE_ACCOUNT: ${{ vars.KNESSET_FETCH_SERVICE_ACCOUNT }}

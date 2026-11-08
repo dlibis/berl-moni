@@ -34,3 +34,4 @@ public/
 
 graphify-out/
 .playwright-mcp/
+gha-creds-*.json

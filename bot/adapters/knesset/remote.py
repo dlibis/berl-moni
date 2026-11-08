@@ -1,4 +1,5 @@
 """Client for the authenticated Knesset fetch service in Israel."""
+from collections.abc import Callable
 from urllib.parse import urlencode
 from urllib.request import Request
 
@@ -12,15 +13,22 @@ from bot.domain.feed import Approval, FeedLetter
 
 
 class KnessetClient:
-    def __init__(self, url: str, token: str):
+    def __init__(self, url: str, token: str, identity: Callable[[], str] | None = None):
         if not url.startswith("https://") or not token:
             raise ValueError("Knesset fetch service needs an HTTPS URL and token")
         self.url = url.rstrip("/")
         self.token = token
+        self.identity = identity
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Authorization": f"Bearer {self.token}"}
+        if self.identity:
+            headers["X-Serverless-Authorization"] = f"Bearer {self.identity()}"
+        return headers
 
     def pdf_request(self, source: str) -> Request:
         return Request(f"{self.url}/pdf?{urlencode({'url': source})}",
-                       headers={"Authorization": f"Bearer {self.token}"})
+                       headers=self._headers())
 
     def fetch_letters(self) -> list[FeedLetter]:
         response = None
@@ -32,7 +40,7 @@ class KnessetClient:
         try:
             with Session() as session:
                 session.mount(f"{self.url}/", HTTPAdapter(max_retries=retries))
-                response = session.get(f"{self.url}/feed", headers={"Authorization": f"Bearer {self.token}"},
+                response = session.get(f"{self.url}/feed", headers=self._headers(),
                                        timeout=(5, 40), allow_redirects=False)
             response.raise_for_status()
             return TypeAdapter(list[FeedLetter]).validate_python(response.json())
@@ -46,7 +54,7 @@ class KnessetClient:
         try:
             with Session() as session:
                 response = session.get(f"{self.url}/approvals",
-                                       headers={"Authorization": f"Bearer {self.token}"},
+                                       headers=self._headers(),
                                        timeout=(5, 200), allow_redirects=False)
             response.raise_for_status()
             return TypeAdapter(list[Approval]).validate_python(response.json())

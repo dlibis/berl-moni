@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 # Web set only: this is what Vercel installs.
 dependencies = [
+    "google-auth>=2.62.0",
     "flask>=3.1",
     "psycopg[binary]>=3.3.6",
     "pydantic>=2.13.4",

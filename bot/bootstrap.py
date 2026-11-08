@@ -6,6 +6,7 @@ import os
 from functools import partial
 
 from bot.adapters.knesset.feed import fetch_approvals, fetch_letters
+from bot.adapters.knesset.identity import GoogleIdentity
 from bot.adapters.knesset.remote import KnessetClient
 from bot.adapters.letter_pdf.download import save_copy
 from bot.adapters.letter_pdf.loader import open_letter
@@ -49,7 +50,11 @@ def model_name() -> str:
 
 def _knesset_client() -> KnessetClient | None:
     url = os.environ.get("KNESSET_FETCH_URL")
-    return KnessetClient(url, os.environ.get("KNESSET_FETCH_TOKEN", "")) if url else None
+    if not url:
+        return None
+    account = os.environ.get("KNESSET_FETCH_SERVICE_ACCOUNT")
+    identity = GoogleIdentity(url, account) if account else None
+    return KnessetClient(url, os.environ.get("KNESSET_FETCH_TOKEN", ""), identity)
 
 
 def ports() -> Ports:

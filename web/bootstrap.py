@@ -5,8 +5,11 @@ the renderer is imported on the first render, in the send path."""
 import os
 from functools import cache
 
+from flask import request
+
 from bot.adapters.github.dispatch import dispatch_workflow
 from bot.adapters.knesset.feed import fetch_approvals, fetch_letters
+from bot.adapters.knesset.identity import GoogleIdentity
 from bot.adapters.knesset.remote import KnessetClient
 from bot.adapters.resend.email_sender import send_email
 from bot.domain.extraction import Extraction
@@ -40,7 +43,11 @@ def _not_in_web(*args, **kwargs):
 
 def ports() -> Ports:
     url = os.environ.get("KNESSET_FETCH_URL")
-    client = KnessetClient(url, os.environ.get("KNESSET_FETCH_TOKEN", "")) if url else None
+    account = os.environ.get("KNESSET_FETCH_SERVICE_ACCOUNT")
+    identity = GoogleIdentity(
+        url, account, provider=os.environ.get("KNESSET_FETCH_IDENTITY_PROVIDER"),
+        subject_token=lambda: request.headers.get("x-vercel-oidc-token")) if url and account else None
+    client = KnessetClient(url, os.environ.get("KNESSET_FETCH_TOKEN", ""), identity) if url else None
     feed = client.fetch_letters if client else fetch_letters
     return Ports(feed=feed, extractor=_not_in_web, render=render, send_email=send_email,
                  save_copy=_not_in_web, approvals=client.fetch_approvals if client else fetch_approvals)
