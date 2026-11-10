@@ -16,6 +16,7 @@ UNIT = "אלפי ש״ח"   # every amount in a letter is in thousands of shekels
 
 
 def report_view(extraction: Extraction, programs: dict[str, str]) -> dict:
+    """Build the report shown on the letter page, including cleaned decision links."""
     e = extraction
     fields = e.fields or RequestFields()   # an incomplete (irrelevant at analysis) letter has no fields
     master = e.matched(programs)
