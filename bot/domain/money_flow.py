@@ -15,16 +15,28 @@ Item = tuple[str, str, float]
 
 SHOWN = 5   # the chart and the table name this many destinations; the rest fold into 'עוד N'
 INTERNAL_HUB = "העברה פנימית"
+STAFFING_METRICS = frozenset({"שיא כח אדם", 'עב"צ', 'שכ"א'})  # not money; a chart in ₪ would lie
 
 
 def transfer_summary(table: Table) -> tuple[list[Item], list[Item], str]:
-    """(sources, destinations, metric): each item's net change in the first metric, summed over its
-    occurrences — sources lost money, destinations gained it. An item that nets to zero (money
-    passing through, like the general reserve) is left out."""
+    """(sources, destinations, metric): each item's net in the first money metric that moved.
+    הוצאה is tried first, then הוצאה מותנית, then הרשאה להתחייב — a reserve allocation often
+    only moves the last. Staffing columns are skipped. An item that nets to zero is left out."""
     metrics = [c.removesuffix(" from") for c in table.columns if str(c).endswith(" from")]
     if not metrics or table.empty:
         return [], [], ""
-    metric = metrics[0]
+    for metric in metrics:
+        if metric in STAFFING_METRICS:
+            continue
+        items = _nets(table, metric)
+        if items:
+            sources = sorted(((c, n, -a) for c, n, a in items if a < 0), key=lambda i: -i[2])
+            destinations = sorted(((c, n, a) for c, n, a in items if a > 0), key=lambda i: -i[2])
+            return sources, destinations, metric
+    return [], [], metrics[0]
+
+
+def _nets(table: Table, metric: str) -> list[Item]:
     net: dict[str, float] = {}
     names: dict[str, str] = {}
     for row in table.records():
@@ -33,22 +45,25 @@ def transfer_summary(table: Table) -> tuple[list[Item], list[Item], str]:
         net[code] = net.get(code, 0.0) + (after - before if before is not None and after is not None else 0.0)
         if row[NAME_COLUMN] is not None:
             names.setdefault(code, str(row[NAME_COLUMN]).strip())
-    items = [(code, names.get(code, ""), net[code]) for code in sorted(net) if round(net[code])]
-    sources = sorted(((c, n, -a) for c, n, a in items if a < 0), key=lambda i: -i[2])
-    destinations = sorted(((c, n, a) for c, n, a in items if a > 0), key=lambda i: -i[2])
-    return sources, destinations, metric
+    return [(code, names.get(code, ""), net[code]) for code in sorted(net) if round(net[code])]
 
 
 def hubs(sources: list[Item], destinations: list[Item], table: Table) -> list[tuple[str, list[Item]]]:
     """The sources split by how their money travels. Sources in the destinations' own budget section
     (the first two digits) move money inside the ministry; the others come from outside — through
     the general reserve when the letter routes it there. The letter never pairs a source with a
-    destination, so the chart joins them only through these hubs. Empty hubs are dropped."""
+    destination, so the chart joins them only through these hubs. Empty hubs are dropped.
+    A reserve allocation often has destinations and no leaf-row source (the 2-digit סעיף is
+    dropped from the table): one hub still stands, named as if the source were outside."""
     if not destinations:
         return [("", sources)] if sources else []
     section = Counter(code[:2] for code, _, _ in destinations).most_common(1)[0][0]
-    via_reserve = any("רזרבה" in str(name) for name in table.column(NAME_COLUMN))
-    groups = [("רזרבה כללית" if via_reserve else "ממקורות אחרים", [s for s in sources if s[0][:2] != section]),
+    via_reserve = any("רזרב" in str(name) for name in table.column(NAME_COLUMN))
+    outside = "רזרבה כללית" if via_reserve else "ממקורות אחרים"
+    if not sources:
+        total = sum(a for _, _, a in destinations)
+        return [(outside, [("", outside, total)])]
+    groups = [(outside, [s for s in sources if s[0][:2] != section]),
               (INTERNAL_HUB, [s for s in sources if s[0][:2] == section])]
     return [(name, items) for name, items in groups if items]
 

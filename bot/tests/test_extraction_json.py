@@ -61,6 +61,26 @@ def test_versions():
     assert is_outdated("gpt-x|prompt:1|schema:1") and is_outdated(None)
 
 
+def test_extractor_total_amount_uses_letter_text_not_scrambled_markdown(fake_letter):
+    letter = fake_letter
+    letter.doc.markdown = (
+        'עיקרי הפנייה:\nאלפי ש"ח בהרשאה להתחייב ו- הפניה נועדה לתקצוב סך של139,049\n'
+        "תאריך הבקשה: 15/09/2026\nבקשה מספר 54-247")
+    letter.doc.text = (
+        'עיקרי הפנייה:\nהפניה נועדה לתקצוב סך של139,049\n אלפי ש"ח בהרשאה להתחייב\n'
+        "תאריך הבקשה: 15/09/2026\nבקשה מספר 54-247")
+    letter.arithmetic_failures = lambda: []
+    letter.decision_links = lambda: []
+    letter.extract_letterhead = lambda: []
+    letter.extract_budget_history = lambda: []
+    result = Extractor(
+        {"999999"},
+        analyze=lambda region: ("לא", [ProgramUses(code="543501", uses=[Use(text="u")])], None),
+        load=lambda source: letter,
+    ).extract("x")
+    assert result.fields.total_amount == "139,049"
+
+
 def test_extractor_records_source_checksum(fake_letter):
     letter = fake_letter
     md = "עיקרי הפנייה:\nbody\nתאריך הבקשה: 1/1/2026\nבקשה מספר 13-206"

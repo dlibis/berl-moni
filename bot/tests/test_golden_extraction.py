@@ -28,3 +28,10 @@ def test_program_number_and_total_survive_a_one_line_narrative():
     region = Extractor._narrative_region(one_line)
     assert Extractor._program_number(region) == "231039, 230120"
     assert Extractor._total_amount(region) == "190,709"
+
+
+def test_total_amount_needs_number_then_alfei():
+    scrambled = 'עיקרי הפנייה: אלפי ש"ח בהרשאה להתחייב ו- סך של139,049 תאריך הבקשה'
+    logical = 'עיקרי הפנייה: סך של139,049\n אלפי ש"ח בהרשאה להתחייב תאריך הבקשה'
+    assert Extractor._total_amount(Extractor._narrative_region(scrambled)) == ""
+    assert Extractor._total_amount(Extractor._narrative_region(logical)) == "139,049"

@@ -91,6 +91,23 @@ def test_transfer_summary_nets_each_item_and_drops_pass_through():
     assert destinations == [("231039", "שירותים", 90)]
 
 
+def test_transfer_summary_skips_unchanged_expenditure_for_commitment():
+    table = _table([
+        {"number": "470103", "name": "רזרבה", "הוצאה from": 100, "הוצאה to": 100,
+         "הרשאה להתחייב from": 10, "הרשאה להתחייב to": 10},
+        {"number": "543501", "name": "רשות", "הוצאה from": 343273, "הוצאה to": 343273,
+         "הרשאה להתחייב from": 215889, "הרשאה להתחייב to": 354938},
+    ])
+
+    sources, destinations, metric = transfer_summary(table)
+
+    assert metric == "הרשאה להתחייב"
+    assert sources == []
+    assert destinations == [("543501", "רשות", 139049)]
+    assert hubs(sources, destinations, table) == [
+        ("רזרבה כללית", [("", "רזרבה כללית", 139049)])]
+
+
 def test_hubs_split_sources_into_reserve_and_internal_transfer():
     table = _table([{"number": "470102", "name": "תוכנית מעבר - רזרבה כללית"}])
     sources = [("230721", "חוץ ביתי", 115), ("544003", "החלטות ממשלה", 100), ("121101", "גמלאות", 90)]

@@ -230,7 +230,7 @@ class Extractor:
             date=self._date(text),
             request_number=self._request_number(text),
             program_number=self._program_number(region),
-            total_amount=self._total_amount(region),
+            total_amount=self._total_amount(self._narrative_region(text)),
             programs=programs,
             decision_links=self._decision_links(letter),
             staffing_changes=self._staffing(text),
