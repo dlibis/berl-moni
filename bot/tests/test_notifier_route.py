@@ -55,6 +55,14 @@ def test_notifier_round_trip(client):
     assert http.get("/api/v1/notifier").get_json() == connection.settings
 
 
+def test_notifier_empty_reply_to(client):
+    http, connection = client
+    response = http.post("/api/v1/notifier", json={"from_address": "news@berl.site", "reply_to_address": ""},
+                         headers={"Origin": "https://berl.site"})
+    assert response.status_code == 200
+    assert connection.settings == {"from_address": "news@berl.site", "reply_to_address": ""}
+
+
 @pytest.mark.parametrize("sender,reply", [("x@example.com", "a@example.com"), ("x@berl.site", "invalid"), ("UP PER@berl.site", "a@example.com")])
 def test_notifier_validation(client, sender, reply):
     http, _ = client

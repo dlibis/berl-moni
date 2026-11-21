@@ -38,12 +38,8 @@ export function MailboxForm() {
   if (box.isError) return <ErrorState />;
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (
-      !email(from) ||
-      !from.toLowerCase().endsWith("@berl.site") ||
-      !email(replyTo)
-    ) {
-      setError("יש למלא כתובת שולח ב־@berl.site וכתובת מענה תקינה");
+    if (!email(from) || !from.toLowerCase().endsWith("@berl.site")) {
+      setError("יש למלא כתובת שולח ב־@berl.site");
       return;
     }
     save.mutate();
@@ -72,10 +68,7 @@ export function MailboxForm() {
         dir="ltr"
         value={replyTo}
         onChange={(e) => setReplyTo(e.target.value)}
-        helper="תשובות למכתבים יגיעו לתיבה זו."
-        error={
-          replyTo && !email(replyTo) ? "יש להזין כתובת דוא״ל תקינה" : undefined
-        }
+        helper="אופציונלי. ריק = בלי תיבת מענה; תשובות לא יגיעו לשום מקום."
       />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <Button type="submit" disabled={save.isPending}>

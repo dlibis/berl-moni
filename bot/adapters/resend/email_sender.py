@@ -21,17 +21,20 @@ SENDER_NAME = "Berl Reports"  # display name shown before every from_address
 def send_email(*, from_address: str, reply_to: str, bcc: list[str],
                  attachments: list[tuple[str, bytes]], subject: str, html: str,
                  idempotency_key: str) -> str:
-    """POST one message to Resend; `to` is the Reply-to inbox, the mailing list goes in `bcc`."""
+    """POST one message to Resend. No Reply-To. Resend requires `to`, so the first list address is To and the rest stay in bcc."""
+    to, rest = ([bcc[0]], bcc[1:]) if bcc else ([reply_to], [])
+    body = {"from": f"{SENDER_NAME} <{from_address}>", "to": to, "subject": subject, "html": html,
+            "attachments": [{"filename": filename, "content_type": "application/pdf",
+                             "content": base64.b64encode(data).decode("ascii")}
+                            for filename, data in attachments]}
+    if rest:
+        body["bcc"] = rest
     try:
         response = requests.post(
             RESEND_EMAILS_URL,
             headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}",
                      "Idempotency-Key": idempotency_key},
-            json={"from": f"{SENDER_NAME} <{from_address}>", "to": [reply_to], "reply_to": reply_to, "bcc": bcc,
-                  "subject": subject, "html": html,
-                  "attachments": [{"filename": filename, "content_type": "application/pdf",
-                                   "content": base64.b64encode(data).decode("ascii")}
-                                  for filename, data in attachments]},
+            json=body,
             timeout=60,
         )
     except requests.RequestException as e:

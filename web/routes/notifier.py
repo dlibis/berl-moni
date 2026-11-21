@@ -32,7 +32,11 @@ def get_notifier():
 def set_notifier():
     data = request.get_json(silent=True) or {}
     sender = _address(data.get("from_address"), sender=True)
-    reply_to = _address(data.get("reply_to_address"))
+    raw_reply = data.get("reply_to_address")
+    if raw_reply is None or (isinstance(raw_reply, str) and not raw_reply.strip()):
+        reply_to = ""
+    else:
+        reply_to = _address(raw_reply)
     if sender is None or reply_to is None:
         return jsonify({"error": "invalid address"}), 400
     with connect() as conn:

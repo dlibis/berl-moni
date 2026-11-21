@@ -37,8 +37,18 @@ def test_success_posts_once_with_idempotency_key_and_base64(monkeypatch):
     assert kw["timeout"] == 60
     assert kw["headers"] == {"Authorization": "Bearer re_test", "Idempotency-Key": "run1-b0-c0"}
     assert kw["json"]["from"] == "Berl Reports <news@example.com>"
-    assert kw["json"]["to"] == ["staff@example.com"] and kw["json"]["bcc"] == SEND["bcc"]
+    assert kw["json"]["to"] == ["a@example.com"] and kw["json"]["bcc"] == ["b@example.com"]
+    assert "reply_to" not in kw["json"]
     assert kw["json"]["attachments"] == [{"filename": "letter.pdf", "content_type": "application/pdf", "content": base64.b64encode(b"%PDF-1").decode()}]
+
+
+def test_empty_bcc_uses_reply_to_as_to(monkeypatch):
+    calls = []
+    monkeypatch.setattr(email_sender.requests, "post",
+                        lambda url, **kw: calls.append(kw) or Response(200, {"id": "em_1"}))
+    email_sender.send_email(**{**SEND, "bcc": []})
+    assert calls[0]["json"]["to"] == ["staff@example.com"] and "bcc" not in calls[0]["json"]
+    assert "reply_to" not in calls[0]["json"]
 
 
 def test_returns_resend_email_id(monkeypatch):

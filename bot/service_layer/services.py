@@ -135,7 +135,7 @@ def limits(uow) -> tuple[int, int, int]:
 
 def settings_problem(uow, from_address: str, reply_to: str, recipients: list[str]) -> ScanReason | None:
     """`missing_settings` / `list_over_cap` (step 3), or None when the sender and list are usable."""
-    if not (from_address or "").endswith("@" + SENDER_DOMAIN) or not (reply_to or "").strip() or not recipients:
+    if not (from_address or "").endswith("@" + SENDER_DOMAIN) or not recipients:
         return "missing_settings"
     daily, reserve, _ = limits(uow)
     if len(recipients) > list_cap(daily - reserve):
